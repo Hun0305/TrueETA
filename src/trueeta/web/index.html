@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>버스 도착 전광판</title>
+<style>
+  :root {
+    --bg: #0b0d0c;
+    --row: #141715;
+    --line: #232724;
+    --route: #f0a830;
+    --eta: #3ddc97;
+    --dim: #8b918d;
+    --wait-bg: #f0a830;
+    --wait-fg: #17201b;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: #e8ece9;
+    font-family: "Noto Sans CJK KR", "NanumBarunGothic", "NanumGothic",
+                 system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    padding: 20px 28px;
+    /* 키오스크가 아닌 환경에서도 잘리지 않게 */
+    padding-top: max(20px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .clock { font-size: 30px; font-weight: 700; letter-spacing: 0.5px; }
+  .status { font-size: 15px; color: var(--dim); }
+  .status.stale { color: var(--route); }
+  .status.error { color: #ff6b6b; }
+
+  /* 표가 아니라 flex 로 짠다. 행 수가 몇이든 세로를 정확히 나눠 갖고,
+     빈 상태에서 헤더가 화면 중앙으로 밀리지 않는다. */
+  .head, .row {
+    display: grid;
+    grid-template-columns: 90px 1fr 170px 120px;
+    align-items: center;
+    gap: 14px;
+    padding: 0 14px;
+  }
+
+  .head {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--route);
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+    flex: 0 0 auto;
+  }
+  .head .num { text-align: right; }
+
+  .rows { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+
+  .row {
+    flex: 1 1 0;              /* 남는 높이를 행들이 똑같이 나눈다 */
+    border-bottom: 1px solid var(--line);
+    min-height: 74px;
+  }
+  .row:last-child { border-bottom: none; }
+
+  .empty {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #4a504c;
+    font-size: 22px;
+  }
+
+  .route {
+    font-size: 40px;
+    font-weight: 800;
+    color: var(--route);
+    line-height: 1;
+  }
+
+  .stop { font-size: 19px; color: #c8cfca; min-width: 0; }
+  .dest { display: block; font-size: 14px; color: var(--dim); margin-top: 3px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .first, .second { text-align: right; white-space: nowrap; }
+
+  .first .value { font-size: 36px; font-weight: 700; color: var(--eta); line-height: 1; }
+  .first .unit  { font-size: 19px; font-weight: 600; color: var(--eta); margin-left: 2px; }
+  .first .soon  { font-size: 28px; font-weight: 700; color: var(--eta); }
+
+  .second .value { font-size: 24px; font-weight: 600; color: var(--dim); line-height: 1; }
+  .second .unit  { font-size: 15px; color: var(--dim); margin-left: 2px; }
+
+  .none { font-size: 24px; color: #4a504c; }
+
+  .badge {
+    display: inline-block;
+    background: var(--wait-bg);
+    color: var(--wait-fg);
+    font-size: 19px;
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 8px;
+    line-height: 1;
+  }
+  .badge.small { font-size: 14px; padding: 5px 10px; }
+  /* 추정 회차대기는 테두리만 — API 가 확정해준 것과 구분한다 */
+  .badge.guess {
+    background: transparent;
+    color: var(--wait-bg);
+    box-shadow: inset 0 0 0 2px var(--wait-bg);
+  }
+
+  .ended { font-size: 18px; color: #4a504c; }
+
+  @media (max-width: 560px) {
+    body { padding: 14px 16px; }
+    .head, .row { grid-template-columns: 58px 1fr 92px 64px; gap: 8px; padding: 0 4px; }
+    .route { font-size: 28px; }
+    .first .value { font-size: 26px; }
+    .first .soon { font-size: 20px; }
+    .second .value { font-size: 18px; }
+    .stop { font-size: 15px; }
+    .head { font-size: 12px; }
+    .badge { font-size: 14px; padding: 5px 9px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="clock" id="clock">--:--</div>
+    <div class="status" id="status">불러오는 중…</div>
+  </header>
+
+  <div class="head">
+    <div>노선</div>
+    <div>정류장</div>
+    <div class="num">첫 번째</div>
+    <div class="num">두 번째</div>
+  </div>
+  <div class="rows" id="rows"></div>
+
+<script>
+"use strict";
+
+const REFRESH_MS = 15000;   // 서버는 로컬이라 자주 물어도 공짜
+const rowsEl   = document.getElementById("rows");
+const statusEl = document.getElementById("status");
+const clockEl  = document.getElementById("clock");
+
+let board = null;
+let polledAtMs = 0;   // 서버가 API 를 조회한 시각. ETA 의 기준점이다.
+
+/* ?demo=1 : 막차 후처럼 실데이터가 비는 시간대에 화면을 손보기 위한 가짜 데이터.
+   서버를 타지 않으므로 API 쿼터도 쓰지 않는다. */
+const DEMO = new URLSearchParams(location.search).has("demo");
+const DEMO_BOARD = {
+  updated_at: new Date().toISOString(),
+  error: null,
+  entries: [
+    { route_name: "22", stop_name: "정류장 A", dest_name: "미금역",
+      status: "running", eta_sec: 245,
+      second_status: "running", second_eta_sec: 1020, estimated_wait: false },
+    { route_name: "25", stop_name: "정류장 B", dest_name: "미금역",
+      status: "waiting", eta_sec: 60,
+      second_status: "running", second_eta_sec: 1380, estimated_wait: false },
+    { route_name: "59", stop_name: "정류장 A", dest_name: "수지구청",
+      status: "running", eta_sec: 410,
+      second_status: "running", second_eta_sec: 1260, estimated_wait: true },
+  ],
+};
+
+function pad(n) { return String(n).padStart(2, "0"); }
+
+function tickClock() {
+  const now = new Date();
+  clockEl.textContent = pad(now.getHours()) + ":" + pad(now.getMinutes());
+}
+
+/* 조회 시점 기준으로 남은 시간을 깎는다.
+   10분 주기라 이 보간이 없으면 화면이 멈춰 보인다. */
+function remainingSec(etaSec) {
+  if (etaSec === null || etaSec === undefined) return null;
+  const elapsed = (Date.now() - polledAtMs) / 1000;
+  return etaSec - elapsed;
+}
+
+function etaCell(etaSec, status, estimated, isFirst) {
+  if (status === "waiting") {
+    const cls = "badge" + (isFirst ? "" : " small") + (estimated ? " guess" : "");
+    return '<span class="' + cls + '">회차대기</span>';
+  }
+  if (status === "ended") return '<span class="ended">운행종료</span>';
+
+  const remain = remainingSec(etaSec);
+  if (remain === null) return '<span class="none">—</span>';
+  if (remain <= 60) {
+    return isFirst ? '<span class="soon">곧 도착</span>'
+                   : '<span class="value">곧</span>';
+  }
+  const min = Math.ceil(remain / 60);
+  return '<span class="value">' + min + '</span><span class="unit">분</span>';
+}
+
+function render() {
+  if (!board) return;
+
+  if (!board.entries.length) {
+    rowsEl.innerHTML = '<div class="empty">표시할 노선이 없습니다</div>';
+    return;
+  }
+
+  rowsEl.innerHTML = board.entries.map(function (e) {
+    return '<div class="row">'
+      + '<div class="route">' + e.route_name + "</div>"
+      + '<div class="stop">' + e.stop_name
+      +   (e.dest_name ? '<span class="dest">' + e.dest_name + " 방면</span>" : "")
+      + "</div>"
+      + '<div class="first">'  + etaCell(e.eta_sec, e.status, e.estimated_wait, true) + "</div>"
+      + '<div class="second">' + etaCell(e.second_eta_sec, e.second_status, false, false) + "</div>"
+      + "</div>";
+  }).join("");
+}
+
+function renderStatus() {
+  if (!board || DEMO) return;
+  const ageMin = Math.floor((Date.now() - polledAtMs) / 60000);
+  if (board.error) {
+    statusEl.className = "status error";
+    statusEl.textContent = board.error;
+    return;
+  }
+  // 폴링 주기(10분)를 훨씬 넘겼으면 데이터가 굳은 것이다
+  statusEl.className = "status" + (ageMin >= 20 ? " stale" : "");
+  statusEl.textContent = ageMin < 1 ? "방금 갱신" : ageMin + "분 전 갱신";
+}
+
+async function load() {
+  if (DEMO) {
+    board = DEMO_BOARD;
+    polledAtMs = Date.now();
+    render();
+    statusEl.className = "status stale";
+    statusEl.textContent = "가짜 데이터";
+    return;
+  }
+  try {
+    const res = await fetch("/api/board", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    board = await res.json();
+    polledAtMs = board.updated_at ? new Date(board.updated_at).getTime() : Date.now();
+    render();
+    renderStatus();
+  } catch (err) {
+    statusEl.className = "status error";
+    statusEl.textContent = "서버 연결 실패";
+  }
+}
+
+setInterval(function () { tickClock(); render(); renderStatus(); }, 1000);
+setInterval(load, REFRESH_MS);
+tickClock();
+load();
+</script>
+</body>
+</html>
