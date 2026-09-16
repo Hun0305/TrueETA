@@ -1,0 +1,209 @@
+{
+  "response": {
+    "comMsgHeader": "",
+    "msgHeader": {
+      "queryTime": "2026-09-16 21:53:04.787",
+      "resultCode": 0,
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busRouteList": [
+        {
+          "adminName": "경기도 수원시",
+          "districtCd": 2,
+          "endStationId": 233001495,
+          "endStationName": "계향2리",
+          "regionName": "수원,화성",
+          "routeId": 200000055,
+          "routeName": 25,
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 200000165,
+          "startStationName": "이목동차고지.이목동입구"
+        },
+        {
+          "adminName": "경기도 부천시",
+          "districtCd": 2,
+          "endStationId": 211000086,
+          "endStationName": "깊은구지사거리",
+          "regionName": "부천,시흥",
+          "routeId": 210000073,
+          "routeName": 25,
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 211000219,
+          "startStationName": "소사공영차고지"
+        },
+        {
+          "adminName": "경기도 시흥시",
+          "districtCd": 2,
+          "endStationId": 224000023,
+          "endStationName": "정왕역",
+          "regionName": "시흥",
+          "routeId": 224000007,
+          "routeName": 25,
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 224000738,
+          "startStationName": "오이도차고지"
+        },
+        {
+          "adminName": "경기도 용인시",
+          "districtCd": 2,
+          "endStationId": 228002194,
+          "endStationName": "진목교회",
+          "regionName": "용인",
+          "routeId": 228000417,
+          "routeName": 25,
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 228000218,
+          "startStationName": "송전터미널"
+        },
+        {
+          "adminName": "경기도 의정부시",
+          "districtCd": 2,
+          "endStationId": 229001391,
+          "endStationName": "적성전통시장",
+          "regionName": "양주,의정부,파주",
+          "routeId": 207000068,
+          "routeName": "25-1",
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 207000237,
+          "startStationName": "의정부을지대학교병원"
+        },
+        {
+          "adminName": "경기도 이천시",
+          "districtCd": 2,
+          "endStationId": 230000582,
+          "endStationName": "진가리",
+          "regionName": "이천",
+          "routeId": 234000528,
+          "routeName": "25-3",
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 230000251,
+          "startStationName": "터미널신둔홈"
+        },
+        {
+          "adminName": "경기도 이천시",
+          "districtCd": 2,
+          "endStationId": 230001366,
+          "endStationName": "산내리종점",
+          "regionName": "이천",
+          "routeId": 234000527,
+          "routeName": "25-31",
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 230000736,
+          "startStationName": "골프장앞"
+        },
+        {
+          "adminName": "경기도 성남시",
+          "districtCd": 2,
+          "endStationId": 206000204,
+          "endStationName": "궁내동.궁안마을",
+          "regionName": "성남",
+          "routeId": 204000048,
+          "routeName": 250,
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 205000218,
+          "startStationName": "도촌동행정복지센터"
+        },
+        {
+          "adminName": "경기도 이천시",
+          "districtCd": 2,
+          "endStationId": 230001038,
+          "endStationName": "신둔도예촌역",
+          "regionName": "이천",
+          "routeId": 230000183,
+          "routeName": 250,
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 230001276,
+          "startStationName": "이천역"
+        },
+        {
+          "adminName": "경기도 수원시",
+          "districtCd": 2,
+          "endStationId": 200000431,
+          "endStationName": "성균관대역(마을)",
+          "regionName": "수원",
+          "routeId": 241242001,
+          "routeName": 25,
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 201000537,
+          "startStationName": "쌍용아파트"
+        },
+        {
+          "adminName": "경기도 용인시",
+          "districtCd": 2,
+          "endStationId": 228003016,
+          "endStationName": "꽃메마을현대4차4단지",
+          "regionName": "성남,용인",
+          "routeId": 241428003,
+          "routeName": 25,
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 206000087,
+          "startStationName": "미금역.청솔마을.2001아울렛"
+        },
+        {
+          "adminName": "경기도 김포시",
+          "districtCd": 2,
+          "endStationId": 232000604,
+          "endStationName": "하성종점(마을)",
+          "regionName": "김포",
+          "routeId": 241471007,
+          "routeName": "25(마조.석탄리)",
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 232000604,
+          "startStationName": "하성종점(마을)"
+        },
+        {
+          "adminName": "경기도 김포시",
+          "districtCd": 2,
+          "endStationId": 232000604,
+          "endStationName": "하성종점(마을)",
+          "regionName": "김포",
+          "routeId": 241471008,
+          "routeName": "25(마조리)",
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 232000604,
+          "startStationName": "하성종점(마을)"
+        },
+        {
+          "adminName": "경기도 김포시",
+          "districtCd": 2,
+          "endStationId": 232000604,
+          "endStationName": "하성종점(마을)",
+          "regionName": "김포",
+          "routeId": 241471009,
+          "routeName": "25(석탄리)",
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 232000604,
+          "startStationName": "하성종점(마을)"
+        },
+        {
+          "adminName": "경기도 수원시",
+          "districtCd": 2,
+          "endStationId": 200000431,
+          "endStationName": "성균관대역(마을)",
+          "regionName": "수원",
+          "routeId": 241242003,
+          "routeName": "25-1",
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 201000274,
+          "startStationName": "LH수원당수2단지"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+# 서비스키 - 절대 커밋하지 않는다
+.env
+
+# venv
+.venv/
+
+# 런타임 데이터 (쿼터 카운터, 노선 캐시, SQLite 로그)
+var/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# fixture 원본 XML은 용량만 차지하므로 제외.
+# 변환된 .json 은 오프라인 개발의 근거이므로 커밋한다.
+tests/fixtures/*.raw.xml

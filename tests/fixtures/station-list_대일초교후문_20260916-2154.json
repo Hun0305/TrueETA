@@ -1,0 +1,32 @@
+{
+  "response": {
+    "comMsgHeader": "",
+    "msgHeader": {
+      "queryTime": "2026-09-16 21:55:42.115",
+      "resultCode": 0,
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busStationList": [
+        {
+          "centerYn": "N",
+          "mobileNo": " 56581",
+          "regionName": "용인",
+          "stationId": 228003550,
+          "stationName": "대일초교후문",
+          "x": 127.1174667,
+          "y": 37.3279167
+        },
+        {
+          "centerYn": "N",
+          "mobileNo": " 56580",
+          "regionName": "용인",
+          "stationId": 228003549,
+          "stationName": "대일초교후문",
+          "x": 127.1175333,
+          "y": 37.32815
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "response": {
+    "comMsgHeader": "",
+    "msgHeader": {
+      "queryTime": "2026-09-16 21:57:50.990",
+      "resultCode": 0,
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busRouteInfoItem": {
+        "adminName": "경기도 용인시",
+        "companyId": 4142800,
+        "companyName": "용인-죽전운수",
+        "companyTel": "031-322-5415",
+        "districtCd": 2,
+        "downFirstTime": "06:30",
+        "downLastTime": "23:45",
+        "endMobileNo": 47694,
+        "endStationId": 228003016,
+        "endStationName": "꽃메마을현대4차4단지",
+        "garageName": "본사",
+        "garageTel": "031-322-5415",
+        "multiFlag": "N",
+        "peekAlloc": 15,
+        "regionName": "성남,용인",
+        "routeId": 241428003,
+        "routeName": 25,
+        "routeTypeCd": 30,
+        "routeTypeName": "마을버스",
+        "satDownFirstTime": "06:30",
+        "satDownLastTime": "23:45",
+        "satNPeekAlloc": 25,
+        "satPeekAlloc": 20,
+        "satUpFirstTime": "06:10",
+        "satUpLastTime": "23:25",
+        "startMobileNo": 7333,
+        "startStationId": 206000087,
+        "startStationName": "미금역.청솔마을.2001아울렛",
+        "sunDownFirstTime": "06:30",
+        "sunDownLastTime": "23:45",
+        "sunNPeekAlloc": 25,
+        "sunPeekAlloc": 20,
+        "sunUpFirstTime": "06:10",
+        "sunUpLastTime": "23:25",
+        "turnStID": 228003016,
+        "turnStNm": "꽃메마을현대4차4단지",
+        "upFirstTime": "06:10",
+        "upLastTime": "23:25",
+        "nPeekAlloc": 20,
+        "nightAlloc": 0
+      }
+    }
+  }
+}

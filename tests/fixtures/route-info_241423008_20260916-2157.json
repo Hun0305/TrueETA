@@ -1,0 +1,54 @@
+{
+  "response": {
+    "comMsgHeader": "",
+    "msgHeader": {
+      "queryTime": "2026-09-16 21:57:51.583",
+      "resultCode": 0,
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busRouteInfoItem": {
+        "adminName": "경기도 용인시",
+        "companyId": 4142300,
+        "companyName": "용인-한비운수",
+        "companyTel": "031-322-5415",
+        "districtCd": 2,
+        "downFirstTime": "06:30",
+        "downLastTime": "23:30",
+        "endMobileNo": 29758,
+        "endStationId": 228000913,
+        "endStationName": "수지구청.수지우체국",
+        "garageName": "본사",
+        "garageTel": "031-897-6130",
+        "multiFlag": "N",
+        "peekAlloc": 14,
+        "regionName": "용인",
+        "routeId": 241423008,
+        "routeName": 59,
+        "routeTypeCd": 30,
+        "routeTypeName": "마을버스",
+        "satDownFirstTime": "06:30",
+        "satDownLastTime": "23:30",
+        "satNPeekAlloc": 20,
+        "satPeekAlloc": 20,
+        "satUpFirstTime": "07:00",
+        "satUpLastTime": "00:00",
+        "startMobileNo": 47952,
+        "startStationId": 228003364,
+        "startStationName": "단국대차고지",
+        "sunDownFirstTime": "06:30",
+        "sunDownLastTime": "23:30",
+        "sunNPeekAlloc": 20,
+        "sunPeekAlloc": 20,
+        "sunUpFirstTime": "07:00",
+        "sunUpLastTime": "00:00",
+        "turnStID": 228000913,
+        "turnStNm": "수지구청.수지우체국",
+        "upFirstTime": "07:00",
+        "upLastTime": "23:50",
+        "nPeekAlloc": 15,
+        "nightAlloc": 0
+      }
+    }
+  }
+}

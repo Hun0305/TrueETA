@@ -1,0 +1,92 @@
+{
+  "response": {
+    "comMsgHeader": "",
+    "msgHeader": {
+      "queryTime": "2026-09-16 21:53:05.490",
+      "resultCode": 0,
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busRouteList": [
+        {
+          "adminName": "경기도 부천시",
+          "districtCd": 2,
+          "endStationId": 115000604,
+          "endStationName": "화곡역7번출구A",
+          "regionName": "부천,서울",
+          "routeId": 210000042,
+          "routeName": 59,
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 210000251,
+          "startStationName": "푸른마을"
+        },
+        {
+          "adminName": "경기도 부천시",
+          "districtCd": 2,
+          "endStationId": 115000051,
+          "endStationName": "화곡역6번출구",
+          "regionName": "부천,서울,인천",
+          "routeId": 210000069,
+          "routeName": "59-1",
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 210000548,
+          "startStationName": "부천영상행복주택"
+        },
+        {
+          "adminName": "경기도 이천시",
+          "districtCd": 2,
+          "endStationId": 237000813,
+          "endStationName": "태평터미널",
+          "regionName": "여주,이천",
+          "routeId": 230000191,
+          "routeName": 5901,
+          "routeTypeCd": 13,
+          "routeTypeName": "일반형시내버스",
+          "startStationId": 230000247,
+          "startStationName": "장호원중고등학교"
+        },
+        {
+          "adminName": "경기도 용인시",
+          "districtCd": 2,
+          "endStationId": 228000913,
+          "endStationName": "수지구청.수지우체국",
+          "regionName": "용인",
+          "routeId": 241423008,
+          "routeName": 59,
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 228003364,
+          "startStationName": "단국대차고지"
+        },
+        {
+          "adminName": "경기도 용인시",
+          "districtCd": 2,
+          "endStationId": 228003516,
+          "endStationName": "벽산아파트3단지앞",
+          "regionName": "성남,용인",
+          "routeId": 241421011,
+          "routeName": "59-1A",
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 206000514,
+          "startStationName": "오리역(마을)"
+        },
+        {
+          "adminName": "경기도 용인시",
+          "districtCd": 2,
+          "endStationId": 228000913,
+          "endStationName": "수지구청.수지우체국",
+          "regionName": "성남,용인",
+          "routeId": 241421012,
+          "routeName": "59-1B",
+          "routeTypeCd": 30,
+          "routeTypeName": "마을버스",
+          "startStationId": 206000514,
+          "startStationName": "오리역(마을)"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "response": {
+    "comMsgHeader": "",
+    "msgHeader": {
+      "queryTime": "2026-09-16 21:55:41.427",
+      "resultCode": 0,
+      "resultMessage": "정상적으로 처리되었습니다."
+    },
+    "msgBody": {
+      "busStationList": [
+        {
+          "centerYn": "N",
+          "mobileNo": " 29273",
+          "regionName": "용인",
+          "stationId": 228001207,
+          "stationName": "도담마을아이파크.죽전휴먼빌",
+          "x": 127.1179333,
+          "y": 37.3296
+        },
+        {
+          "centerYn": "N",
+          "mobileNo": " 29272",
+          "regionName": "용인",
+          "stationId": 228001059,
+          "stationName": "도담마을아이파크.죽전휴먼빌",
+          "x": 127.1179,
+          "y": 37.32975
+        }
+      ]
+    }
+  }
+}

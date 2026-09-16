@@ -1,0 +1,55 @@
+# 버스 전광판 설정
+#
+# 여기 적힌 stationId / routeId 는 2026-09-16 프로브로 확인한 실제 값이다.
+# 다시 확인하려면:
+#   python scripts/probe.py station-list --keyword "도담마을아이파크"
+#   python scripts/probe.py arrivals --station 228001059 --routes 22,59
+#
+# staOrder / turnSeq / 첫차·막차는 여기 두지 않는다.
+#   - staOrder, turnSeq 는 arrivals 응답에 매번 들어온다
+#   - 첫차·막차·배차간격은 route-info 를 하루 1회 받아 캐시한다
+# 값을 두 곳에 두면 한쪽이 먼저 낡는다.
+
+stops:
+  - station_id: 228001059
+    name: 도담마을아이파크.죽전휴먼빌
+    mobile_no: "29272"          # 정류장 표지판 번호
+    note: 미금역 방향(22) · 수지구청 방향(59)
+    routes: ["22", "59"]
+
+  - station_id: 228003549
+    name: 대일초교후문
+    mobile_no: "56580"
+    note: 미금역 방향(25)
+    routes: ["25"]
+
+display:
+  vehicles_per_route: 2         # 노선당 다음 몇 대까지 표시할지
+  countdown: true               # predictTimeSec 를 1초씩 깎아 보여줄지
+  refresh_sec: 5                # 화면이 /api/board 를 다시 받는 주기
+
+polling:
+  # 운행시간 밖에는 조회하지 않는다 (개발계정 1,000건/일)
+  # 실제 첫차/막차는 route-info 캐시에서 읽고, 여기 값은 그 바깥 울타리다.
+  service_window:
+    start: "05:50"
+    end: "00:10"
+
+  # 개발계정 1,000건/일 기준으로 역산한 값이다.
+  #   운행창 1,100분 × 정류장 2곳 = 1사이클 2콜
+  #   far=60s  -> 2,200콜/일  한도의 2.2배 (초과)
+  #   far=150s ->   880콜/일  여유 120콜  <- 지금 값
+  # 화면은 predictTimeSec 를 1초씩 깎아 보여주므로 2.5분 주기여도 끊겨 보이지 않는다.
+  # 운영계정 트래픽 증가 승인 후에는 far=60 / near=20 으로 낮출 것.
+  interval_sec:
+    far: 150                    # 다음 차가 멀리 있을 때
+    near: 60                    # 도착 임박
+  near_threshold_sec: 180       # 이 시간 안으로 들어오면 near 주기로
+
+judge:
+  # 회차대기 추정: 같은 vehId 가 N회 연속 위치·ETA 그대로면 대기로 본다.
+  # API 의 flag=WAIT 가 누락될 때를 위한 보조 판정. N 은 로그 쌓아서 튜닝.
+  #
+  # 차량 위치 순번 = staOrder - locationNo1
+  # 정차 지점      = 1(기점) 또는 turnSeq(회차점)
+  stall_count: 3
