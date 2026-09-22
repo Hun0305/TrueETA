@@ -75,7 +75,7 @@ flowchart LR
 | 웹서버 | `GET /api/board` → 최신 상태 JSON, 대시보드 정적 파일 제공 |
 | 설정 | `config.yaml` (정류장·노선), `.env` (서비스키) |
 | 화면 | labwc autostart로 Chromium `--kiosk` 실행, 5초마다 JSON 갱신 + 1초 카운트다운 |
-| 원격 | Tailscale: 밖에서 대시보드 확인, SSH 유지보수 |
+| 원격 | Cloudflare Tunnel: 밖에서 대시보드 확인 ([remote-access.md](remote-access.md)) |
 | 옵션 | SQLite 판정 로그 (임계값 튜닝), `wlr-randr`로 야간 HDMI off |
 
 ```mermaid
@@ -101,7 +101,7 @@ flowchart LR
         end
     end
 
-    PHONE["폰 · 노트북<br/>Tailscale"]
+    PHONE["폰 · 노트북<br/>Cloudflare Tunnel"]
     LCD["8인치 LCD<br/>1024×768"]
 
     A_ROUTE -->|하루 1회| RCACHE
@@ -116,7 +116,7 @@ flowchart LR
     WEB -->|JSON| KIOSK
     SCHED -.->|off / on| KIOSK
     KIOSK ==>|HDMI| LCD
-    PHONE <-->|Tailscale| WEB
+    PHONE <-->|Cloudflare Tunnel| WEB
 
     classDef core fill:#FBE5C0,stroke:#C98217,color:#17201B
     class JUDGE core

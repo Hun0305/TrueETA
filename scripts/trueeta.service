@@ -1,0 +1,15 @@
+[Unit]
+Description=TrueETA bus arrival board
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hun
+WorkingDirectory=/home/hun/TrueETA
+ExecStart=/home/hun/TrueETA/.venv/bin/python -m trueeta
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

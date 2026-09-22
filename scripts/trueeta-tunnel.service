@@ -1,0 +1,15 @@
+[Unit]
+Description=Cloudflare Quick Tunnel for TrueETA
+After=trueeta.service network-online.target
+Requires=trueeta.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hun
+ExecStart=/usr/bin/cloudflared tunnel --url http://localhost:8099
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
