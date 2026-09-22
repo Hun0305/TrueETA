@@ -97,22 +97,63 @@ class StallTracker:
                 del self._seen[key]
 
 
+#: 화면이 이 시간 안에 /api/board 를 부르지 않으면 안 보는 것으로 친다.
+#: 화면은 15초마다 부르므로 네 번 놓치면 꺼진 것으로 본다.
+SUBSCRIPTION_TTL_SEC = 60.0
+
+
 class BoardState:
-    def __init__(self) -> None:
-        self._board = Board(entries=(), updated_at=_now(), error="아직 조회 전")
+    """프리셋별 보드 + 누가 뭘 보고 있는지.
+
+    폴링 비용이 '저장한 프리셋 수' 가 아니라 '지금 보고 있는 프리셋 수' 에
+    비례하게 만드는 것이 목적이다.
+    """
+
+    def __init__(self, default_preset: str = "기본") -> None:
+        self.default_preset = default_preset
+        self._boards: dict[str, Board] = {}
+        self._last_seen: dict[str, float] = {}
         self.stalls = StallTracker()
 
-    def get(self) -> Board:
-        return self._board
+    # --- 보드 -----------------------------------------------------------
 
-    def set(self, board: Board) -> None:
-        self._board = board
-
-    def set_error(self, message: str) -> None:
-        """조회에 실패해도 직전 화면은 유지하고 에러만 얹는다."""
-        self._board = Board(
-            entries=self._board.entries, updated_at=self._board.updated_at, error=message
+    def get(self, preset: str | None = None) -> Board:
+        name = preset or self.default_preset
+        return self._boards.get(
+            name, Board(entries=(), updated_at=_now(), error="아직 조회 전")
         )
+
+    def set(self, board: Board, preset: str | None = None) -> None:
+        self._boards[preset or self.default_preset] = board
+
+    def set_error(self, message: str, preset: str | None = None) -> None:
+        """조회에 실패해도 직전 화면은 유지하고 에러만 얹는다."""
+        name = preset or self.default_preset
+        previous = self.get(name)
+        self._boards[name] = Board(
+            entries=previous.entries, updated_at=previous.updated_at, error=message
+        )
+
+    # --- 구독 -----------------------------------------------------------
+
+    def touch(self, preset: str, *, now: float | None = None) -> None:
+        """누가 이 프리셋을 보고 있다는 신호. /api/board 호출이 곧 하트비트다."""
+        self._last_seen[preset] = time.monotonic() if now is None else now
+
+    def active_presets(
+        self, *, ttl: float = SUBSCRIPTION_TTL_SEC, now: float | None = None
+    ) -> set[str]:
+        """지금 폴링해야 할 프리셋.
+
+        기본 프리셋은 아무도 안 봐도 항상 포함한다 — 키오스크가 늘 띄우고 있고,
+        여기서 빠지면 관측 로그 수집이 통째로 멈춘다.
+        """
+        moment = time.monotonic() if now is None else now
+        active = {self.default_preset}
+        active.update(
+            name for name, seen in self._last_seen.items() if moment - seen <= ttl
+        )
+        return active
 
 
 def _now() -> str:

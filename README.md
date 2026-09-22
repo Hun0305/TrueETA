@@ -13,7 +13,7 @@
 - 개발 루프(자동 재시작·쿼터): [docs/development.md](docs/development.md)
 - 외부 접속·systemd: [docs/remote-access.md](docs/remote-access.md)
 - 1차(프로브) 결과: [docs/phase1-probe.md](docs/phase1-probe.md)
-- 즐겨찾기 확장 설계(미구현): [docs/preset-design.md](docs/preset-design.md)
+- 즐겨찾기 확장 설계: [docs/preset-design.md](docs/preset-design.md) (1단계 구현됨)
 
 ## 현재 단계
 
@@ -34,7 +34,7 @@ sudo apt install fonts-noto-cjk      # 한글 폰트. 없으면 화면 글자가
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '디코딩' 키
-.venv/bin/pytest                     # 67개, 네트워크·쿼터 0
+.venv/bin/pytest                     # 84개, 네트워크·쿼터 0
 ```
 
 서비스키는 **디코딩** 키를 넣는다. 인코딩 키를 넣으면 이중 인코딩으로 인증에 실패한다.
@@ -48,7 +48,9 @@ cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '�
 | 경로 | 내용 |
 |---|---|
 | `/` | 전광판 화면 |
+| `/?preset=출근-신분당` | 다른 프리셋을 띄운다 |
 | `/?demo=1` | 가짜 데이터. 막차 후에 화면 손볼 때 쓴다 (API 를 안 탄다) |
+| `/api/presets` | 프리셋 목록 |
 | `/api/board` | 최신 상태 JSON |
 | `/api/health` | 폴러 상태 |
 
@@ -147,13 +149,35 @@ TRUEETA_RELOAD=1 TRUEETA_PORT=8098 .venv/bin/python -m trueeta
 정상 주행과 회차지의 감소율 분포를 각각 내고, 두 분포 사이의 경계를 제안한다.
 분포가 겹치면 감소율만으로는 못 가른다는 것도 알려준다.
 
+## 프리셋
+
+정류장·노선 묶음을 여러 개 두고 하나를 띄운다. `/?preset=이름`.
+
+**비용은 저장한 개수가 아니라 보고 있는 개수에 비례한다.**
+
+- `default: true` 프리셋은 아무도 안 봐도 항상 폴링한다 (키오스크용)
+- 나머지는 화면이 열려 있는 동안만 폴링한다. 화면의 `/api/board` 호출이
+  하트비트이고, 60초간 끊기면 폴링 대상에서 빠진다
+- **호출은 정류장당 1건.** 프리셋 둘이 같은 정류장을 써도 한 번만 부른다
+- 주기는 활성 정류장 수에서 역산한다
+
+| 활성 정류장 | 피크 주기 | 하루 호출 |
+|---|---|---|
+| 2곳 | 120초 | 700콜 |
+| 3곳 | 126초 | 996콜 |
+| 5곳 | 210초 | 995콜 |
+
+정류장이 늘면 주기가 자동으로 길어져 한도 안에 남는다.
+설계 배경과 남은 단계는 [docs/preset-design.md](docs/preset-design.md).
+
 ## 설정
 
 `config.yaml` 에서 바꾼다. 고친 뒤 서버를 재시작해야 적용된다.
 
 | 항목 | 기본값 | 설명 |
 |---|---|---|
-| `stops` | 정류장 2곳 | `station_id` 와 표시할 `routes` |
+| `presets` | 2개 | 한 화면에 띄울 정류장·노선 묶음. `default: true` 가 키오스크용 |
+| `polling.daily_budget` | `1000` | 주기를 역산할 때 쓰는 일일 한도 |
 | `polling.peak_window` | `08:00`~`18:00` | 이 안에서는 `interval_sec.peak` 주기 |
 | `polling.interval_sec.peak` | `120` | 피크 주기(초). 2분 |
 | `polling.interval_sec.far` | `600` | 그 외 주기(초). 10분 |
@@ -247,7 +271,7 @@ src/trueeta/
     errors.py            GbisError / GbisAuthError
 scripts/probe.py         프로브 CLI
 scripts/analyze.py       관측 로그 분석 (임계값 후보 제안)
-tests/                   67개 · fixtures 에 실응답 보관
+tests/                   84개 · fixtures 에 실응답 보관
 ```
 
 폴러와 웹서버는 **한 프로세스**다. 많아야 2분에 2콜 규모라 나눌 이유가 없고,
