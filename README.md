@@ -13,6 +13,7 @@
 - 개발 루프(자동 재시작·쿼터): [docs/development.md](docs/development.md)
 - 외부 접속·systemd: [docs/remote-access.md](docs/remote-access.md)
 - 1차(프로브) 결과: [docs/phase1-probe.md](docs/phase1-probe.md)
+- 즐겨찾기 확장 설계(미구현): [docs/preset-design.md](docs/preset-design.md)
 
 ## 현재 단계
 
