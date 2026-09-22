@@ -80,6 +80,9 @@ class BoardEntry:
     second_eta_sec: int | None  # 두 번째 차량
     second_status: Status | None
     estimated_wait: bool = False  # 회차대기가 API 확정이 아니라 추정인지
+    # 차가 기점/회차점에 있다. 회차대기로 확정되지 않았어도 ETA 를 믿기 어려우므로
+    # 화면이 숫자를 흐리게 하고 '회차지' 표식을 단다.
+    at_standing: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -92,6 +95,7 @@ class BoardEntry:
             "second_eta_sec": self.second_eta_sec,
             "second_status": self.second_status.value if self.second_status else None,
             "estimated_wait": self.estimated_wait,
+            "at_standing": self.at_standing,
         }
 
 

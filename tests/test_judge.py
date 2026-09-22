@@ -83,18 +83,38 @@ def test_passing_through_turn_point_is_not_a_wait():
     assert verdict.status is Status.RUNNING
 
 
-def test_repeated_stall_at_turn_point_becomes_a_wait():
-    """stateCd 를 못 믿을 때의 보조 신호."""
+def test_long_stall_at_turn_point_becomes_a_wait():
+    """stateCd 를 못 믿을 때의 보조 신호. 횟수가 아니라 초로 센다."""
     passing = vehicle(location_no=4, state_cd=0)
-    verdict = judge_vehicle(arrival(passing), passing, stalled_count=3, stall_threshold=3)
+    verdict = judge_vehicle(
+        arrival(passing), passing, stalled_sec=300, stall_seconds=240
+    )
     assert verdict.status is Status.WAITING
     assert verdict.estimated is True
 
 
-def test_stall_below_threshold_is_still_running():
+def test_short_stall_at_turn_point_is_not_yet_confirmed():
     passing = vehicle(location_no=4, state_cd=0)
-    verdict = judge_vehicle(arrival(passing), passing, stalled_count=2, stall_threshold=3)
+    verdict = judge_vehicle(
+        arrival(passing), passing, stalled_sec=120, stall_seconds=240
+    )
     assert verdict.status is Status.RUNNING
+
+
+def test_passing_turn_point_still_warns_the_screen():
+    """확정은 못 해도 '여기 회차지다' 는 조회 1회로 즉시 알려야 한다.
+
+    나가기 직전에 보는 화면이라 3회 관측을 기다릴 수 없다.
+    """
+    passing = vehicle(location_no=4, state_cd=0)
+    verdict = judge_vehicle(arrival(passing), passing)
+    assert verdict.status is Status.RUNNING
+    assert verdict.at_standing is True
+
+
+def test_normal_running_bus_does_not_warn():
+    moving = vehicle(location_no=10, state_cd=2)
+    assert judge_vehicle(arrival(moving), moving).at_standing is False
 
 
 def test_59_has_no_turn_point_ahead_of_our_stop():

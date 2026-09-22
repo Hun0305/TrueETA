@@ -22,3 +22,12 @@ def in_window(now: time, start: time, end: time) -> bool:
         return start <= now < end
     # 자정을 넘는 창: 05:50~24:00 또는 00:00~00:10
     return now >= start or now < end
+
+
+def span_seconds(start: time, end: time) -> int:
+    """창의 길이(초). 자정을 넘으면 하루를 더한다."""
+    def secs(t: time) -> int:
+        return t.hour * 3600 + t.minute * 60 + t.second
+
+    delta = secs(end) - secs(start)
+    return delta if delta > 0 else delta + 86_400

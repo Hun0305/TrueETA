@@ -42,10 +42,13 @@ async def lifespan(app: FastAPI):
     settings = load_settings()
     config = load_board_config()
     log.info(
-        "폴링 시작: 정류장 %d곳, %d초 주기 (하루 약 %d콜)",
+        "폴링 시작: 정류장 %d곳, %s~%s 는 %d초 · 그 외 %d초 (하루 약 %d콜)",
         len(config.stops),
+        config.peak_start,
+        config.peak_end,
+        config.interval_peak_sec,
         config.interval_far_sec,
-        len(config.stops) * (18 * 3600 // config.interval_far_sec),
+        config.daily_calls,
     )
     task = asyncio.create_task(run_poller(settings, config, state))
     try:

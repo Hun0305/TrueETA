@@ -19,6 +19,8 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+from trueeta.window import parse_hhmm, span_seconds
+
 # src/trueeta/config.py -> src/trueeta -> src -> 프로젝트 루트
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -43,6 +45,10 @@ class Settings:
     def quota_path(self) -> Path:
         return self.var_dir / "quota.json"
 
+    @property
+    def observations_path(self) -> Path:
+        return self.var_dir / "observations.db"
+
 
 @dataclass(frozen=True)
 class Stop:
@@ -64,10 +70,15 @@ class BoardConfig:
     refresh_sec: int = 5
     window_start: str = "05:50"
     window_end: str = "00:10"
+    peak_start: str = "08:00"
+    peak_end: str = "18:00"
+    interval_peak_sec: int = 120
     interval_far_sec: int = 60
     interval_near_sec: int = 20
     near_threshold_sec: int = 180
-    stall_count: int = 3
+    stall_ratio: float = 0.3
+    stall_seconds: float = 240.0
+    log_observations: bool = True
 
     @property
     def station_ids(self) -> tuple[str, ...]:
@@ -76,6 +87,17 @@ class BoardConfig:
     @property
     def all_routes(self) -> frozenset[str]:
         return frozenset(r for s in self.stops for r in s.routes)
+
+    @property
+    def daily_calls(self) -> int:
+        """하루 예상 호출 건수. 개발계정 한도(1,000건)와 대볼 값이다.
+
+        피크 창이 운행시간 창 안에 있다고 본다 (08:00~18:00 ⊂ 05:50~00:10).
+        """
+        total = span_seconds(parse_hhmm(self.window_start), parse_hhmm(self.window_end))
+        peak = span_seconds(parse_hhmm(self.peak_start), parse_hhmm(self.peak_end))
+        cycles = peak // self.interval_peak_sec + (total - peak) // self.interval_far_sec
+        return len(self.stops) * cycles
 
 
 def load_settings(*, require_key: bool = True) -> Settings:
@@ -121,6 +143,7 @@ def load_board_config(path: Path | None = None) -> BoardConfig:
     display = raw.get("display") or {}
     polling = raw.get("polling") or {}
     window = polling.get("service_window") or {}
+    peak = polling.get("peak_window") or {}
     interval = polling.get("interval_sec") or {}
     judge = raw.get("judge") or {}
 
@@ -131,8 +154,13 @@ def load_board_config(path: Path | None = None) -> BoardConfig:
         refresh_sec=display.get("refresh_sec", 5),
         window_start=str(window.get("start", "05:50")),
         window_end=str(window.get("end", "00:10")),
+        peak_start=str(peak.get("start", "08:00")),
+        peak_end=str(peak.get("end", "18:00")),
+        interval_peak_sec=interval.get("peak", 120),
         interval_far_sec=interval.get("far", 60),
         interval_near_sec=interval.get("near", 20),
         near_threshold_sec=polling.get("near_threshold_sec", 180),
-        stall_count=judge.get("stall_count", 3),
+        stall_ratio=float(judge.get("stall_ratio", 0.3)),
+        stall_seconds=float(judge.get("stall_seconds", 240)),
+        log_observations=bool(judge.get("log_observations", True)),
     )

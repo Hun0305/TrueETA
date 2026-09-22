@@ -9,6 +9,8 @@ import json
 import pytest
 
 from trueeta.config import load_board_config, route_key
+from trueeta.quota import DAILY_LIMIT
+from trueeta.window import in_window, parse_hhmm, span_seconds
 
 FIXTURE = "tests/fixtures/arrivals_228001059_*.json"
 
@@ -40,6 +42,28 @@ def test_stop_matches_int_route_name_from_api(cfg):
     assert doe.wants(22) and doe.wants(59)
     assert not doe.wants(25)
     assert not doe.wants("57A")
+
+
+def test_daily_calls_stay_under_the_dev_quota(cfg):
+    """개발계정은 1,000건/일. 넘기면 그날 남은 시간 내내 화면이 에러가 된다.
+
+    카운터는 세기만 하고 막지 않으므로(quota.py) 이 방어선은 여기뿐이다.
+    재시작·프로브용 여유분도 남겨둔다.
+    """
+    assert cfg.daily_calls <= DAILY_LIMIT - 150
+
+
+def test_peak_window_is_inside_the_service_window(cfg):
+    """daily_calls 는 피크가 운행시간 안에 있다고 보고 계산한다."""
+    service = (parse_hhmm(cfg.window_start), parse_hhmm(cfg.window_end))
+    assert in_window(parse_hhmm(cfg.peak_start), *service)
+    assert span_seconds(*service) > span_seconds(
+        parse_hhmm(cfg.peak_start), parse_hhmm(cfg.peak_end)
+    )
+
+
+def test_peak_interval_is_shorter_than_the_off_peak_one(cfg):
+    assert cfg.interval_peak_sec < cfg.interval_far_sec
 
 
 def test_config_filters_the_real_arrivals_response(cfg):

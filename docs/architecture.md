@@ -144,38 +144,33 @@ flowchart LR
 
 ## 3. 회차대기 판정
 
-```mermaid
-flowchart TD
-    START["도착정보 수신<br/>노선별 차량 2대"] --> D1{"도착정보 있음?"}
-    D1 -->|아니오| D1a{"운행시간 안?<br/>첫차~막차"}
-    D1a -->|예| O_DEP["출발대기"]
-    D1a -->|아니오| O_OFFHR["운행 전·후"]
-    D1 -->|예| D2{"flag = STOP?"}
-    D2 -->|예| O_END["운행종료"]
-    D2 -->|아니오| D3{"flag = WAIT?"}
-    D3 -->|예| O_WAIT["회차대기<br/>API 판정"]
-    D3 -->|아니오| D4{"위치 순번이<br/>기점(1) 또는 turnSeq?"}
-    D4 -->|아니오| O_RUN["운행중<br/>ETA 카운트다운"]
-    D4 -->|예| D5{"같은 vehId가 N회 연속<br/>위치·ETA 변화 없음?"}
-    D5 -->|예| O_WAIT2["회차대기 (추정)<br/>API 신호 누락 대비"]
-    D5 -->|아니오| O_RUN
+> 구현된 알고리즘 전체는 **[judge-algorithm.md](judge-algorithm.md)** 에 있다.
+> 여기는 요약만 둔다 — 흐름도를 두 곳에 두면 갈라진다.
 
-    classDef wait fill:#FBE5C0,stroke:#C98217,color:#17201B
-    classDef run fill:#DAEEDF,stroke:#2B7549,color:#17201B
-    classDef off fill:#E3E7E2,stroke:#B9C2BB,color:#17201B
-    class O_WAIT,O_WAIT2 wait
-    class O_RUN run
-    class O_DEP,O_OFFHR,O_END off
-```
+회차지에서 출발을 기다리는 버스가 "4분"으로 뜨고 실제로는 15분이 걸린다.
+`predictTime` 이 "달리면 4분"일 뿐 회차지 체류를 포함하지 않기 때문이다.
+
+**시간표와 대조하는 방법은 쓸 수 없다.** 마을버스는 정시 운행이 아니라
+배차간격 운행이라 "몇 시 몇 분 도착" 데이터가 GBIS·TAGO 어디에도 없다
+(고속·시외버스만 시간표 API 가 있다). 대신 신호 세 가지를 쓴다.
+
+| 신호 | 언제 알 수 있나 | 세기 |
+|---|---|---|
+| `flag = WAIT` | 조회 1회 | 확정. 마을버스에선 거의 안 온다 |
+| **위치** | **조회 1회** | 추정. 나가기 직전에 보는 화면이라 이 즉시성이 핵심 |
+| ETA 감소율 | 조회 2회 이상 | 추정. 시간표를 대신하는 기준선 |
 
 ```
-위치 순번  = staOrder − locationNo1
-정차 조건  = 위치 순번 ∈ {1(기점), turnSeq(회차점)}     // stateCd1 == 1 이면 더 확실
-정체 조건  = 같은 vehId1가 N회 연속 위치 그대로 && predictTimeSec1 안 줄어듦
+위치 순번  = staOrder − locationNo
+정차 조건  = 위치 순번 ∈ {1(기점), turnSeq(회차점)}    // stateCd == 1 이면 더 확실
+감소율     = (이전 ETA − 현재 ETA) / 경과 시간
+             정상 주행 0.6~1.0  ·  회차대기 0 근처
 ```
 
 - 위치정보 API 없이 도착정보만으로 차량 위치 계산 가능
-- N은 SQLite 로그 쌓아서 튜닝
+- `flag` 는 노선 단위 상태다. **차량 유무를 먼저 봐야 한다** (실응답에서 확인)
+- 위치만으로 확정하지 않고, 화면에 "회차지" 경고로 먼저 알린다
+- 임계값은 `var/observations.db` 를 `scripts/analyze.py` 로 분석해 정한다
 
 ### 사용하는 API 필드
 
