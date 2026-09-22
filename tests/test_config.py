@@ -78,3 +78,43 @@ def test_config_filters_the_real_arrivals_response(cfg):
 
     assert {route_key(i["routeName"]) for i in ours} == {"22", "59"}
     assert len(items) > len(ours)  # 다른 노선도 섞여 있어야 필터가 의미 있다
+
+
+# --- 쿼터 카운터 (오퍼레이션별) ------------------------------------------
+
+
+def test_quota_counts_per_operation(tmp_path):
+    """한도는 오퍼레이션마다 따로다. 합산하면 여유가 있는데도 한도로 보인다."""
+    from trueeta.quota import QuotaCounter
+
+    q = QuotaCounter(tmp_path / "q.json")
+    assert q.bump("arrivals") == 1
+    assert q.bump("arrivals") == 2
+    assert q.bump("station-list") == 1      # 다른 오퍼레이션은 따로 센다
+    assert q.today("arrivals") == 2
+    assert q.today("station-list") == 1
+    assert q.today() == 3                   # 인자 없으면 전체 합
+
+
+def test_quota_reads_the_old_flat_format(tmp_path):
+    """예전 파일은 날짜마다 숫자 하나였다. 읽다가 죽으면 안 된다."""
+    import json
+    from datetime import date
+
+    from trueeta.quota import QuotaCounter
+
+    path = tmp_path / "q.json"
+    path.write_text(json.dumps({date.today().isoformat(): 112}), encoding="utf-8")
+    q = QuotaCounter(path)
+    assert q.today() == 112
+    assert q.bump("arrivals") == 1          # 새 기록은 오퍼레이션별로
+    assert q.today() == 113
+
+
+def test_quota_breakdown(tmp_path):
+    from trueeta.quota import QuotaCounter
+
+    q = QuotaCounter(tmp_path / "q.json")
+    q.bump("arrivals", 5)
+    q.bump("station-routes")
+    assert q.breakdown() == {"arrivals": 5, "station-routes": 1}

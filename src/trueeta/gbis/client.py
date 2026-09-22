@@ -79,9 +79,11 @@ class GbisClient:
         display = self.display_url(op, params, path)
 
         if self._quota is not None:
-            used = self._quota.bump()
+            # 한도는 오퍼레이션별로 따로다 (활용신청의 '상세기능' 표 참고).
+            # 합산해서 세면 여유가 있는데도 한도에 닿은 것처럼 보인다.
+            used = self._quota.bump(op)
             note = "  <-- 한도 임박!" if used >= WARN_AT else ""
-            print(f"[quota] 오늘 {used}/{self._quota.limit}건{note}", file=sys.stderr)
+            print(f"[quota] {op} 오늘 {used}/{self._quota.limit}건{note}", file=sys.stderr)
 
         response = httpx.get(url, params=self._params(params), timeout=self._timeout)
         text = response.text
