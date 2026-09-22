@@ -194,16 +194,21 @@ const PRESET = PARAMS.get("preset");
 const DEMO_BOARD = {
   updated_at: new Date().toISOString(),
   error: null,
+  /* 회차대기 표시 세 가지가 다 나오게 짠 데이터다.
+     화면을 손볼 때 한 눈에 비교할 수 있어야 한다. */
   entries: [
+    // 운행중 — 믿을 수 있는 ETA
     { route_name: "22", stop_name: "정류장 A", dest_name: "미금역",
-      status: "running", eta_sec: 245,
-      second_status: "running", second_eta_sec: 1020, estimated_wait: false },
+      status: "running", eta_sec: 245, at_standing: false, estimated_wait: false,
+      second_status: "running", second_eta_sec: 1020 },
+    // 회차대기 확정 — API 가 flag=WAIT 을 준 경우
     { route_name: "25", stop_name: "정류장 B", dest_name: "미금역",
-      status: "running", eta_sec: 245, at_standing: true,
-      second_status: "running", second_eta_sec: 1380, estimated_wait: false },
+      status: "waiting", eta_sec: 240, at_standing: true, estimated_wait: false,
+      second_status: "running", second_eta_sec: 1380 },
+    // 회차지에 있음 — 확정은 아니지만 ETA 를 믿기 어렵다
     { route_name: "59", stop_name: "정류장 A", dest_name: "수지구청",
-      status: "running", eta_sec: 410,
-      second_status: "running", second_eta_sec: 1260, estimated_wait: true },
+      status: "running", eta_sec: 410, at_standing: true, estimated_wait: false,
+      second_status: "running", second_eta_sec: 1260 },
   ],
 };
 

@@ -14,6 +14,7 @@
 - 외부 접속·systemd: [docs/remote-access.md](docs/remote-access.md)
 - 1차(프로브) 결과: [docs/phase1-probe.md](docs/phase1-probe.md)
 - 즐겨찾기 설계: [docs/preset-design.md](docs/preset-design.md) (1~3단계 구현됨)
+- 운영계정 신청 자료: [docs/data-portal-submission.md](docs/data-portal-submission.md)
 
 ## 현재 단계
 
@@ -185,7 +186,7 @@ DB 가 비었을 때 한 번 옮겨 담는 **씨앗**이고, 그 뒤로는 DB �
 | 항목 | 기본값 | 설명 |
 |---|---|---|
 | `presets` | 2개 | 한 화면에 띄울 정류장·노선 묶음. `default: true` 가 키오스크용 |
-| `polling.daily_budget` | `1000` | 주기를 역산할 때 쓰는 일일 한도 |
+| `polling.daily_budget` | `1000` | 주기를 역산할 때 쓰는 일일 한도. 운영계정 승인 후 올린다 |
 | `polling.peak_window` | `08:00`~`18:00` | 이 안에서는 `interval_sec.peak` 주기 |
 | `polling.interval_sec.peak` | `120` | 피크 주기(초). 2분 |
 | `polling.interval_sec.far` | `600` | 그 외 주기(초). 10분 |
