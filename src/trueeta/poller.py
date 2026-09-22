@@ -26,6 +26,7 @@ from trueeta.gbis.envelope import as_list, find_key
 from trueeta.gbis.parser import parse_arrivals
 from trueeta.judge import judge_arrival
 from trueeta.models import Board, BoardEntry, Status
+from trueeta.presets import PresetStore
 from trueeta.state import BoardState
 from trueeta.storage import Observation, ObservationLog
 from trueeta.window import in_window, parse_hhmm
@@ -243,14 +244,30 @@ def off_hours_board(preset: Preset) -> Board:
     )
 
 
+def resolve_presets(
+    names: set[str], available: tuple[Preset, ...], default: Preset
+) -> list[Preset]:
+    """이름으로 프리셋을 찾는다. 사라진 이름은 조용히 버린다 —
+    편집 중에 지워진 프리셋 때문에 사이클이 죽으면 안 된다."""
+    by_name = {p.name: p for p in available}
+    found = [by_name[n] for n in names if n in by_name]
+    if not any(p.name == default.name for p in found):
+        found.append(default)
+    return found
+
+
 def run_cycle(
     client: GbisClient,
     config: BoardConfig,
     state: BoardState,
     log_db: ObservationLog | None = None,
+    store: PresetStore | None = None,
 ) -> int:
     """한 사이클. 폴링한 정류장 수를 돌려준다 (다음 주기 계산용)."""
-    active = [config.preset(name) for name in state.active_presets()]
+    presets = store.all() if store else config.presets
+    default = next((p for p in presets if p.is_default), presets[0])
+    state.default_preset = default.name
+    active = resolve_presets(state.active_presets(), presets, default)
     wanted = wanted_routes(active)
 
     judged, errors = fetch_and_judge(
@@ -262,7 +279,10 @@ def run_cycle(
 
 
 async def run_poller(
-    settings: Settings, config: BoardConfig, state: BoardState
+    settings: Settings,
+    config: BoardConfig,
+    state: BoardState,
+    store: PresetStore | None = None,
 ) -> None:
     """종료될 때까지 주기적으로 보드를 갱신한다."""
     client = GbisClient(
@@ -294,7 +314,7 @@ async def run_poller(
                     "운행시간 밖 (%s~%s) — 조회 중지",
                     config.window_start, config.window_end,
                 )
-                for preset in config.presets:
+                for preset in (store.all() if store else config.presets):
                     state.set(off_hours_board(preset), preset.name)
                 sleeping = True
             await asyncio.sleep(60)
@@ -306,7 +326,9 @@ async def run_poller(
 
         try:
             # httpx 동기 호출이라 이벤트 루프를 막지 않게 스레드로 뺀다
-            stations = await asyncio.to_thread(run_cycle, client, config, state, log_db)
+            stations = await asyncio.to_thread(
+                run_cycle, client, config, state, log_db, store
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # 폴러는 어떤 이유로도 멈추면 안 된다

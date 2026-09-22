@@ -49,6 +49,11 @@ class Settings:
     def observations_path(self) -> Path:
         return self.var_dir / "observations.db"
 
+    @property
+    def presets_path(self) -> Path:
+        """프리셋은 지우면 안 되는 데이터라 관측 로그와 파일을 나눈다."""
+        return self.var_dir / "presets.db"
+
 
 @dataclass(frozen=True)
 class Stop:

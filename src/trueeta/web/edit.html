@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>프리셋 편집</title>
+<style>
+  :root {
+    --bg: #0b0d0c;
+    --card: #141715;
+    --line: #232724;
+    --accent: #f0a830;
+    --ok: #3ddc97;
+    --dim: #8b918d;
+    --warn: #ffb4a2;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; min-height: 100%;
+    background: var(--bg); color: #e8ece9;
+    font-family: "Noto Sans CJK KR", "NanumGothic", system-ui, sans-serif;
+  }
+  body {
+    padding: 20px 16px;
+    padding-top: max(20px, env(safe-area-inset-top, 0px));
+    padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
+    max-width: 820px; margin: 0 auto;
+  }
+
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--dim); font-size: 14px; margin-bottom: 20px; }
+  .sub a { color: var(--accent); }
+
+  section {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
+  }
+  h2 { font-size: 15px; margin: 0 0 12px; color: var(--accent); font-weight: 600; }
+
+  label { display: block; font-size: 13px; color: var(--dim); margin-bottom: 6px; }
+  input[type=text] {
+    width: 100%; padding: 11px 12px; font-size: 16px;
+    background: #0e100f; color: inherit;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 auto; }
+
+  button {
+    padding: 11px 16px; font-size: 15px; font-weight: 600;
+    background: var(--accent); color: #17201b;
+    border: 0; border-radius: 8px; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  button.danger { background: transparent; color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.small { padding: 7px 11px; font-size: 13px; }
+
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    padding: 12px 0; border-bottom: 1px solid var(--line);
+    display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  }
+  li:last-child { border-bottom: none; }
+
+  .grow { flex: 1 1 200px; min-width: 0; }
+  .name { font-size: 16px; }
+  .meta { font-size: 13px; color: var(--dim); margin-top: 3px; }
+
+  /* 양방향 경고 — 이 화면에서 가장 중요한 부분이다 */
+  .ambiguous {
+    display: inline-block; margin-left: 6px; padding: 2px 7px;
+    font-size: 12px; font-weight: 700; border-radius: 5px;
+    background: var(--accent); color: #17201b;
+  }
+  .notice {
+    background: #2a2013; border: 1px solid var(--accent);
+    border-radius: 8px; padding: 11px 13px; margin-bottom: 14px;
+    font-size: 13.5px; line-height: 1.55;
+  }
+  .notice b { color: var(--accent); }
+
+  .route {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--line);
+  }
+  .route:last-child { border-bottom: none; }
+  .route input { width: 20px; height: 20px; accent-color: var(--accent); flex: 0 0 auto; }
+  .route .no { font-size: 19px; font-weight: 700; color: var(--accent); min-width: 56px; }
+  .route .dest { font-size: 14px; color: #c8cfca; }
+  .route .dest b { color: var(--ok); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #0e100f; border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 12px; font-size: 14px; margin: 0 6px 6px 0;
+  }
+  .chip span { color: var(--dim); font-size: 12px; }
+
+  .msg { font-size: 14px; margin-top: 10px; min-height: 20px; }
+  .msg.err { color: var(--warn); }
+  .msg.ok { color: var(--ok); }
+  .empty { color: var(--dim); font-size: 14px; padding: 8px 0; }
+</style>
+</head>
+<body>
+  <h1>프리셋 편집</h1>
+  <div class="sub">
+    정류장과 노선을 골라 묶음으로 저장합니다 ·
+    <a href="/">전광판으로</a>
+  </div>
+
+  <section>
+    <h2>프리셋</h2>
+    <ul id="presets"><li class="empty">불러오는 중…</li></ul>
+    <div class="row" style="margin-top:12px">
+      <input type="text" id="newName" placeholder="새 프리셋 이름 (예: 출근-신분당)">
+      <button class="ghost" id="newBtn" style="flex:0 0 auto">새로 만들기</button>
+    </div>
+  </section>
+
+  <section id="editor" hidden>
+    <h2><span id="editingName"></span> 편집</h2>
+
+    <div class="notice">
+      <b>방향을 꼭 확인하세요.</b> 정류장 하나에 양방향 두 개가 있고
+      <b>이름이 완전히 같습니다.</b> 노선 목록의 <b>방면</b>(종점)을 보고
+      가려는 쪽을 고르세요. 표지판 번호로도 대조할 수 있습니다.
+    </div>
+
+    <label for="kw">정류장 검색</label>
+    <div class="row">
+      <input type="text" id="kw" placeholder="정류장 이름 또는 번호">
+      <button id="searchBtn" style="flex:0 0 auto">검색</button>
+      <button class="ghost" id="gpsBtn" style="flex:0 0 auto">내 주변</button>
+    </div>
+    <div class="msg" id="searchMsg"></div>
+    <ul id="results"></ul>
+
+    <div id="routeBox" hidden>
+      <h2 style="margin-top:18px">노선 고르기 — <span id="routeStation"></span></h2>
+      <div id="routes"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="addBtn" style="flex:0 0 auto">선택한 노선 담기</button>
+        <button class="ghost small" id="cancelRoutes" style="flex:0 0 auto">닫기</button>
+      </div>
+    </div>
+
+    <h2 style="margin-top:20px">담은 목록</h2>
+    <div id="basket"><div class="empty">아직 없습니다</div></div>
+
+    <div class="row" style="margin-top:16px">
+      <button id="saveBtn" style="flex:0 0 auto">저장</button>
+      <button class="ghost small" id="closeEditor" style="flex:0 0 auto">닫기</button>
+    </div>
+    <div class="msg" id="saveMsg"></div>
+  </section>
+
+<script>
+"use strict";
+
+let editing = null;      // 편집 중인 프리셋 이름
+let basket = [];         // [{station_id, name, mobile_no, routes:[{name,dest_name}]}]
+let current = null;      // 노선 고르는 중인 정류장
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function say(el, text, kind) {
+  el.className = "msg" + (kind ? " " + kind : "");
+  el.textContent = text;
+}
+
+async function api(path, options) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || ("HTTP " + res.status));
+  return body;
+}
+
+/* --- 프리셋 목록 --- */
+
+async function loadPresets() {
+  const { presets } = await api("/api/presets");
+  $("presets").innerHTML = presets.map((p) => {
+    const stops = p.stops.length;
+    const routes = p.stops.reduce((n, s) => n + s.routes.length, 0);
+    return '<li><div class="grow">'
+      + '<div class="name">' + esc(p.name)
+      +   (p.default ? '<span class="ambiguous">기본</span>' : "") + "</div>"
+      + '<div class="meta">정류장 ' + stops + '곳 · 노선 ' + routes + "개</div></div>"
+      + '<button class="ghost small" data-edit="' + esc(p.name) + '">편집</button>'
+      + '<button class="ghost small" data-open="' + esc(p.name) + '">보기</button>'
+      + (p.default ? ""
+          : '<button class="ghost small" data-default="' + esc(p.name) + '">기본으로</button>'
+            + '<button class="danger small" data-del="' + esc(p.name) + '">삭제</button>')
+      + "</li>";
+  }).join("") || '<li class="empty">프리셋이 없습니다</li>';
+}
+
+$("presets").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  const { edit, del, open } = btn.dataset;
+  const mkDefault = btn.dataset.default;
+  try {
+    if (open) { location.href = "/?preset=" + encodeURIComponent(open); return; }
+    if (edit) { await startEdit(edit); return; }
+    if (mkDefault) { await api("/api/presets/" + encodeURIComponent(mkDefault) + "/default", { method: "POST" }); }
+    if (del && confirm(del + " 을(를) 지울까요?")) {
+      await api("/api/presets/" + encodeURIComponent(del), { method: "DELETE" });
+    }
+    await loadPresets();
+  } catch (err) { alert(err.message); }
+});
+
+/* --- 편집 --- */
+
+async function startEdit(name) {
+  const { presets } = await api("/api/presets");
+  const found = presets.find((p) => p.name === name);
+  editing = name;
+  basket = found
+    ? found.stops.map((s) => ({
+        station_id: s.station_id, name: s.name, mobile_no: "",
+        routes: s.routes.map((r) => ({ name: r, dest_name: "" })),
+      }))
+    : [];
+  $("editingName").textContent = name;
+  $("editor").hidden = false;
+  $("routeBox").hidden = true;
+  $("results").innerHTML = "";
+  say($("saveMsg"), "");
+  drawBasket();
+  $("editor").scrollIntoView({ behavior: "smooth" });
+}
+
+$("newBtn").onclick = async () => {
+  const name = $("newName").value.trim();
+  if (!name) return;
+  editing = name;
+  basket = [];
+  $("editingName").textContent = name;
+  $("editor").hidden = false;
+  drawBasket();
+};
+$("closeEditor").onclick = () => { $("editor").hidden = true; editing = null; };
+
+/* --- 정류장 검색 --- */
+
+async function runSearch(fn) {
+  say($("searchMsg"), "찾는 중…");
+  $("results").innerHTML = "";
+  try {
+    const { stations } = await fn();
+    if (!stations.length) { say($("searchMsg"), "결과가 없습니다"); return; }
+    const anyAmbiguous = stations.some((s) => s.ambiguous);
+    say($("searchMsg"),
+      stations.length + "곳"
+      + (anyAmbiguous ? " · 같은 이름이 둘 이상이면 양방향입니다" : ""),
+      anyAmbiguous ? "err" : "");
+    $("results").innerHTML = stations.map((s) =>
+      '<li><div class="grow"><div class="name">' + esc(s.name)
+      + (s.ambiguous ? '<span class="ambiguous">양방향</span>' : "") + "</div>"
+      + '<div class="meta">표지판 ' + esc(s.mobile_no || "-")
+      +   " · " + esc(s.region || "")
+      +   (s.distance != null ? " · " + Math.round(s.distance) + "m" : "")
+      + "</div></div>"
+      + '<button class="small" data-station="' + esc(s.station_id) + '"'
+      +   ' data-name="' + esc(s.name) + '" data-mobile="' + esc(s.mobile_no) + '">노선 보기</button></li>'
+    ).join("");
+  } catch (err) { say($("searchMsg"), err.message, "err"); }
+}
+
+$("searchBtn").onclick = () => {
+  const kw = $("kw").value.trim();
+  if (kw.length < 2) { say($("searchMsg"), "두 글자 이상 입력하세요", "err"); return; }
+  runSearch(() => api("/api/search/stations?keyword=" + encodeURIComponent(kw)));
+};
+$("kw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("searchBtn").click(); });
+
+$("gpsBtn").onclick = () => {
+  if (!navigator.geolocation) { say($("searchMsg"), "위치를 쓸 수 없습니다", "err"); return; }
+  say($("searchMsg"), "위치 확인 중…");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => runSearch(() => api(
+      "/api/search/around?x=" + pos.coords.longitude + "&y=" + pos.coords.latitude)),
+    () => say($("searchMsg"), "위치를 가져오지 못했습니다", "err"),
+  );
+};
+
+/* --- 노선 고르기: 방면이 여기서 드러난다 --- */
+
+$("results").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-station]");
+  if (!btn) return;
+  current = {
+    station_id: btn.dataset.station,
+    name: btn.dataset.name,
+    mobile_no: btn.dataset.mobile,
+  };
+  $("routeStation").textContent = current.name + " (표지판 " + (current.mobile_no || "-") + ")";
+  $("routes").innerHTML = '<div class="empty">불러오는 중…</div>';
+  $("routeBox").hidden = false;
+  try {
+    const { routes } = await api(
+      "/api/search/routes?station_id=" + encodeURIComponent(current.station_id));
+    const picked = new Set(
+      (basket.find((s) => s.station_id === current.station_id)?.routes || [])
+        .map((r) => r.name));
+    $("routes").innerHTML = routes.map((r) =>
+      '<label class="route"><input type="checkbox" value="' + esc(r.route_name) + '"'
+      + ' data-dest="' + esc(r.dest_name) + '"'
+      + (picked.has(r.route_name) ? " checked" : "") + ">"
+      + '<span class="no">' + esc(r.route_name) + "</span>"
+      + '<span class="dest">→ <b>' + esc(r.dest_name || "방면 미상") + "</b> 방면</span></label>"
+    ).join("") || '<div class="empty">이 정류장을 지나는 노선이 없습니다</div>';
+  } catch (err) {
+    $("routes").innerHTML = '<div class="empty">' + esc(err.message) + "</div>";
+  }
+});
+
+$("cancelRoutes").onclick = () => { $("routeBox").hidden = true; };
+
+$("addBtn").onclick = () => {
+  const chosen = [...$("routes").querySelectorAll("input:checked")].map((i) => ({
+    name: i.value, dest_name: i.dataset.dest,
+  }));
+  basket = basket.filter((s) => s.station_id !== current.station_id);
+  if (chosen.length) basket.push({ ...current, routes: chosen });
+  $("routeBox").hidden = true;
+  drawBasket();
+};
+
+/* --- 담은 목록 --- */
+
+function drawBasket() {
+  if (!basket.length) { $("basket").innerHTML = '<div class="empty">아직 없습니다</div>'; return; }
+  $("basket").innerHTML = basket.map((s, i) =>
+    '<li style="border-bottom:1px solid var(--line)"><div class="grow">'
+    + '<div class="name">' + esc(s.name) + "</div>"
+    + '<div class="meta" style="margin-top:6px">'
+    +   s.routes.map((r) => '<span class="chip">' + esc(r.name)
+        + "<span>" + esc(r.dest_name || "방면 미상") + " 방면</span></span>").join("")
+    + "</div></div>"
+    + '<button class="danger small" data-drop="' + i + '">빼기</button></li>'
+  ).join("");
+}
+
+$("basket").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-drop]");
+  if (!btn) return;
+  basket.splice(Number(btn.dataset.drop), 1);
+  drawBasket();
+});
+
+$("saveBtn").onclick = async () => {
+  if (!editing) return;
+  if (!basket.length) { say($("saveMsg"), "정류장을 하나 이상 담으세요", "err"); return; }
+  try {
+    const res = await api("/api/presets/" + encodeURIComponent(editing), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stops: basket }),
+    });
+    say($("saveMsg"), "저장했습니다 (정류장 " + res.stops + "곳)", "ok");
+    await loadPresets();
+  } catch (err) { say($("saveMsg"), err.message, "err"); }
+};
+
+loadPresets();
+</script>
+</body>
+</html>

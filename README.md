@@ -13,7 +13,7 @@
 - 개발 루프(자동 재시작·쿼터): [docs/development.md](docs/development.md)
 - 외부 접속·systemd: [docs/remote-access.md](docs/remote-access.md)
 - 1차(프로브) 결과: [docs/phase1-probe.md](docs/phase1-probe.md)
-- 즐겨찾기 확장 설계: [docs/preset-design.md](docs/preset-design.md) (1단계 구현됨)
+- 즐겨찾기 설계: [docs/preset-design.md](docs/preset-design.md) (1~3단계 구현됨)
 
 ## 현재 단계
 
@@ -34,7 +34,7 @@ sudo apt install fonts-noto-cjk      # 한글 폰트. 없으면 화면 글자가
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '디코딩' 키
-.venv/bin/pytest                     # 84개, 네트워크·쿼터 0
+.venv/bin/pytest                     # 113개, 네트워크·쿼터 0
 ```
 
 서비스키는 **디코딩** 키를 넣는다. 인코딩 키를 넣으면 이중 인코딩으로 인증에 실패한다.
@@ -50,6 +50,7 @@ cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '�
 | `/` | 전광판 화면 |
 | `/?preset=출근-신분당` | 다른 프리셋을 띄운다 |
 | `/?demo=1` | 가짜 데이터. 막차 후에 화면 손볼 때 쓴다 (API 를 안 탄다) |
+| `/edit` | **프리셋 편집** — 정류장 검색·노선 선택 |
 | `/api/presets` | 프리셋 목록 |
 | `/api/board` | 최신 상태 JSON |
 | `/api/health` | 폴러 상태 |
@@ -168,6 +169,13 @@ TRUEETA_RELOAD=1 TRUEETA_PORT=8098 .venv/bin/python -m trueeta
 | 5곳 | 210초 | 995콜 |
 
 정류장이 늘면 주기가 자동으로 길어져 한도 안에 남는다.
+**`/edit` 에서 정류장을 검색해 프리셋을 만들 수 있다.**
+정류장 하나에 양방향 두 개가 있고 이름이 같으므로, 노선 목록의
+**방면**(종점)을 보고 고른다. 검색도 쿼터를 쓰므로 30분 캐시가 걸려 있다.
+
+프리셋은 `var/presets.db` 에 저장된다. `config.yaml` 의 `presets:` 는
+DB 가 비었을 때 한 번 옮겨 담는 **씨앗**이고, 그 뒤로는 DB 가 원본이다.
+
 설계 배경과 남은 단계는 [docs/preset-design.md](docs/preset-design.md).
 
 ## 설정
@@ -260,9 +268,12 @@ src/trueeta/
   poller.py              시간대별 주기 조회 -> 판정 -> 보드
   state.py               최신 보드 + 차량 정체 이력
   api.py                 FastAPI · lifespan 에서 폴러 기동
+  presets.py             프리셋 저장소 (SQLite)
+  search.py              정류장·노선 검색 + 캐시
   quota.py               일일 호출 카운터
   storage.py             관측 로그 (SQLite) — 임계값 튜닝 근거
   web/index.html         전광판 화면 (빌드 없음)
+  web/edit.html          프리셋 편집 화면
   gbis/
     operations.py        오퍼레이션 10종 정의 (probe CLI 가 여기서 생성된다)
     client.py            HTTP 호출 (재시도 없음 - 실패를 그대로 드러낸다)
@@ -271,7 +282,7 @@ src/trueeta/
     errors.py            GbisError / GbisAuthError
 scripts/probe.py         프로브 CLI
 scripts/analyze.py       관측 로그 분석 (임계값 후보 제안)
-tests/                   84개 · fixtures 에 실응답 보관
+tests/                   113개 · fixtures 에 실응답 보관
 ```
 
 폴러와 웹서버는 **한 프로세스**다. 많아야 2분에 2콜 규모라 나눌 이유가 없고,
