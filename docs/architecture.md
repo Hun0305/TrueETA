@@ -4,7 +4,9 @@
 
 - 배경: 카카오맵은 노선마다 정류장이 달라 두 번 눌러야 하고, "회차대기"를 실제 도착시간으로 착각하기 쉬움
 - 형태: 알람시계처럼 두는 상시 표시 화면
-- 상태 (2026-09-16): 하드웨어 연결 완료 → 1차 완료. API 3종 승인·실호출 검증·정류장/노선 ID 확보 ([phase1-probe.md](phase1-probe.md))
+- 상태 (2026-09-23): 폴링·회차대기 판정·전광판 화면·프리셋 편집까지 동작. 관측 로그 수집 중
+  - 1차 프로브 [phase1-probe.md](phase1-probe.md) · 판정 [judge-algorithm.md](judge-algorithm.md)
+  - 프리셋 [preset-design.md](preset-design.md) · 운영계정 [data-portal-submission.md](data-portal-submission.md)
 
 ---
 
@@ -65,58 +67,68 @@ flowchart LR
 
 ## 2. SW 구성
 
-| 구성 요소 | 내용 |
-|---|---|
-| OS / 세션 | Raspberry Pi OS (Debian 13 Trixie 기반), labwc (Wayland) |
-| 백엔드 | `bus-board.service` (systemd) · Python FastAPI (제안) |
-| 폴러·파서 | 경기도 버스 API v2 주기 조회, 22·25·59번만 추림, 적응형 주기 |
-| 노선 정보 캐시 | 회차점·첫차/막차·배차간격, 하루 1회 갱신 |
-| 회차대기 판정 | `flag`, `turnSeq`, 위치 정체 감지 (3장) |
-| 웹서버 | `GET /api/board` → 최신 상태 JSON, 대시보드 정적 파일 제공 |
-| 설정 | `config.yaml` (정류장·노선), `.env` (서비스키) |
-| 화면 | labwc autostart로 Chromium `--kiosk` 실행, 5초마다 JSON 갱신 + 1초 카운트다운 |
-| 원격 | Cloudflare Tunnel: 밖에서 대시보드 확인 ([remote-access.md](remote-access.md)) |
-| 옵션 | SQLite 판정 로그 (임계값 튜닝), `wlr-randr`로 야간 HDMI off |
+| 구성 요소 | 내용 | 구현 |
+|---|---|---|
+| OS / 세션 | Raspberry Pi OS (Debian 13 Trixie), labwc (Wayland) | |
+| 백엔드 | `trueeta.service` (systemd) · Python FastAPI, 포트 8099 | [api.py](../src/trueeta/api.py) |
+| 폴러 | 시간대별 주기(08~18시 120초 / 그 외 600초), 운행시간 밖 중지 | [poller.py](../src/trueeta/poller.py) |
+| 파서 | 실응답의 빈 문자열·키 부재·타입 혼재 흡수 | [gbis/parser.py](../src/trueeta/gbis/parser.py) |
+| 회차대기 판정 | `flag=WAIT` · 위치(기점/회차점) · ETA 감소율 — 순수 함수 | [judge.py](../src/trueeta/judge.py) |
+| 관측 로그 | 매 사이클 기록, 임계값 튜닝 근거 (`var/observations.db`) | [storage.py](../src/trueeta/storage.py) |
+| 프리셋 | 정류장·노선 묶음. 보고 있는 것만 폴링 (`var/presets.db`) | [presets.py](../src/trueeta/presets.py) |
+| 정류장 검색 | 이름·좌표 검색과 경유 노선. 30분 캐시 | [search.py](../src/trueeta/search.py) |
+| 웹서버 | `/api/board?preset=` · `/api/presets` · `/api/search/*` · 화면 제공 | [api.py](../src/trueeta/api.py) |
+| 설정 | `config.yaml`(프리셋 씨앗·주기·예산), `.env`(서비스키) | [config.py](../src/trueeta/config.py) |
+| 화면 | 전광판 `/`, 프리셋 편집 `/edit`. 빌드 없는 HTML | [web/](../src/trueeta/web/) |
+| 원격 | Cloudflare Tunnel ([remote-access.md](remote-access.md)) | |
+| 아직 | 노선 정보 캐시, 적응형 주기, 키오스크 자동실행, 야간 화면 off | |
+
+> **노선 정보 캐시는 구현하지 않았다.** 첫차·막차를 하루 1회 받아 캐시하기로
+> 했으나 `config.yaml` 의 `service_window` 에 손으로 적어둔 상태다.
+> 그래서 `버스노선 조회` API 는 런타임에서 호출하지 않는다.
 
 ```mermaid
 flowchart LR
     subgraph API["경기도 버스 API v2 · 공공데이터포털"]
         A_ROUTE["버스노선 조회<br/>getBusRouteInfoItemv2<br/>getBusRouteStationListv2"]
         A_ARR["버스도착정보<br/>getBusArrivalListv2"]
-        A_LOC["버스위치정보 (옵션)<br/>getBusLocationListv2"]
+        A_STA["정류소 조회<br/>getBusStationListv2<br/>getBusStationViaRouteListv2"]
     end
 
     subgraph RPI["Raspberry Pi 4B"]
-        subgraph SVC["bus-board.service · systemd · Python"]
-            CFG["설정 파일<br/>config.yaml · .env"]
-            POLL["폴러 · 파서<br/>적응형 주기<br/>22·25·59번만"]
-            RCACHE["노선 정보 캐시<br/>회차점 · 첫차/막차 · 배차간격"]
-            JUDGE{{"회차대기 판정<br/>flag · turnSeq · 위치 정체"}}
-            WEB["웹서버<br/>GET /api/board"]
-            DB[("SQLite 기록<br/>옵션")]
+        subgraph SVC["trueeta.service · systemd · Python"]
+            CFG["설정<br/>config.yaml · .env"]
+            PRESET[("프리셋 DB<br/>presets.db")]
+            POLL["폴러<br/>보고 있는 프리셋만<br/>주기 = 정류장 수에서 역산"]
+            PARSE["파서<br/>빈문자열 · 키부재 · 타입혼재"]
+            JUDGE{{"회차대기 판정<br/>flag · 위치 · ETA 감소율"}}
+            SEARCH["정류장 검색<br/>30분 캐시"]
+            WEB["웹서버<br/>/api/board · /api/presets · /api/search"]
+            OBS[("관측 로그<br/>observations.db")]
         end
-        subgraph SES["labwc 세션 · Wayland"]
-            SCHED["화면 스케줄 (옵션)<br/>wlr-randr"]
-            KIOSK["Chromium 키오스크<br/>5초 갱신 · 1초 카운트다운"]
+        subgraph SES["labwc 세션 · Wayland (아직)"]
+            SCHED["화면 스케줄<br/>wlr-randr"]
+            KIOSK["Chromium 키오스크<br/>15초 갱신 · 1초 카운트다운"]
         end
     end
 
     PHONE["폰 · 노트북<br/>Cloudflare Tunnel"]
     LCD["8인치 LCD<br/>1024×768"]
 
-    A_ROUTE -->|하루 1회| RCACHE
+    A_ROUTE -.->|프로브 전용| PARSE
     A_ARR -->|주기 조회| POLL
-    A_LOC -.->|필요 시| POLL
-    CFG -->|읽기| POLL
-    RCACHE -->|운행시간| POLL
-    POLL -->|도착 목록| JUDGE
-    RCACHE -->|회차점 순번| JUDGE
+    A_STA -->|편집할 때만| SEARCH
+    CFG -->|씨앗| PRESET
+    PRESET -->|정류장 · 노선| POLL
+    POLL -->|도착 목록| PARSE
+    PARSE -->|도메인 객체| JUDGE
     JUDGE -->|상태 + ETA| WEB
-    JUDGE -.->|기록| DB
+    JUDGE -->|매 사이클 기록| OBS
+    SEARCH -->|정류장 · 방면| WEB
+    WEB -->|프리셋 저장| PRESET
     WEB -->|JSON| KIOSK
     SCHED -.->|off / on| KIOSK
     KIOSK ==>|HDMI| LCD
-    PHONE <-->|Cloudflare Tunnel| WEB
 
     classDef core fill:#FBE5C0,stroke:#C98217,color:#17201B
     class JUDGE core
@@ -130,15 +142,29 @@ flowchart LR
 
 ### API 호출 예산
 
-```
-개발계정 한도                          1,000건/일
-정류장 2곳 × 1분 × 18.3시간   =   2,200건/일   ← 초과
-정류장 2곳 × 2.5분 × 18.3시간 =     880건/일   ← 채택 (far=150s)
-```
+**한도는 오퍼레이션(상세기능)마다 따로 1,000건/일이다.** 활용신청 화면의
+'상세기능' 표에 기능별로 각각 적혀 있다. 도착정보 조회를 900건 써도
+정류장 검색은 자기 몫 1,000건을 그대로 갖는다.
 
-- 활용사례 등록 후 **운영계정 트래픽 증가 신청** (자동승인)
-- 그 전까지: 첫차 전·막차 후 조회 중지, 도착 임박할 때만 주기 단축
-- 화면은 `predictTimeSec`를 1초씩 깎아 표시 → 조회 간격이 길어도 끊겨 보이지 않게
+폴링이 쓰는 것은 `getBusArrivalListv2` 하나뿐. 1사이클에 정류장 1곳당 1콜이다.
+
+| 주기 (정류장 2곳) | 하루 호출 | |
+|---|---|---|
+| 전 시간대 1분 | 2,200건 | 한도의 2.2배 — **개발계정으로는 불가능** |
+| 전 시간대 2.5분 | 880건 | 여유 120건 |
+| **08~18시 2분 + 그 외 10분** | **700건** | **채택** (여유 300) |
+
+1분 주기를 쓰려면 1분 구간을 하루 7시간 이내로 좁혀야 976건으로 겨우
+들어온다(여유 24건). 실용적이지 않아 **전 시간대 1분은 운영계정이 전제**다.
+
+주기는 상수가 아니라 활성 정류장 수에서 역산한다 (`config.intervals_for`).
+프리셋에 정류장을 더 담으면 주기가 자동으로 길어져 예산 안에 남는다.
+예산 자체는 `polling.daily_budget` 으로 바꾼다.
+
+- 운영계정 신청 자료: [data-portal-submission.md](data-portal-submission.md)
+- 운행시간(05:50~00:10) 밖에는 호출하지 않고 노선 목록만 '운행종료'로 띄운다
+- 화면은 조회 시각 기준으로 `predictTimeSec` 를 1초씩 깎는다. 다만 실제
+  감소율은 0.6~0.8 이라 주기가 길수록 낙관적으로 어긋난다 ([todo.md](todo.md) 2번)
 
 ---
 
