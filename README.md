@@ -15,6 +15,7 @@
 - 1차(프로브) 결과: [docs/phase1-probe.md](docs/phase1-probe.md)
 - 즐겨찾기 설계: [docs/preset-design.md](docs/preset-design.md) (1~3단계 구현됨)
 - 운영계정 신청 자료: [docs/data-portal-submission.md](docs/data-portal-submission.md)
+- 사고 기록: [docs/incident-2026-09-24.md](docs/incident-2026-09-24.md) (관측 로그 이틀 유실)
 
 ## 현재 단계
 
@@ -35,7 +36,7 @@ sudo apt install fonts-noto-cjk      # 한글 폰트. 없으면 화면 글자가
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '디코딩' 키
-.venv/bin/pytest                     # 113개, 네트워크·쿼터 0
+.venv/bin/pytest                     # 121개, 네트워크·쿼터 0
 ```
 
 서비스키는 **디코딩** 키를 넣는다. 인코딩 키를 넣으면 이중 인코딩으로 인증에 실패한다.
@@ -256,6 +257,13 @@ ss -ltnp | grep ':8099'
 kill <PID>
 ```
 
+**부팅했는데 한동안 조회를 안 한다**
+라즈베리파이는 RTC 가 없어 부팅 직후 시계가 틀리다. 폴러가 시계 동기화를
+기다린 뒤 시작하지만(최대 120초), 확실히 하려면:
+```bash
+sudo systemctl enable --now systemd-time-wait-sync
+```
+
 **화면 글자가 네모(□)로 나온다**
 한글 폰트가 없다. `sudo apt install fonts-noto-cjk`
 
@@ -281,6 +289,7 @@ src/trueeta/
   api.py                 FastAPI · lifespan 에서 폴러 기동
   presets.py             프리셋 저장소 (SQLite)
   search.py              정류장·노선 검색 + 캐시
+  clock.py               시계 동기화 대기 (RTC 없는 기기)
   quota.py               일일 호출 카운터
   storage.py             관측 로그 (SQLite) — 임계값 튜닝 근거
   web/index.html         전광판 화면 (빌드 없음)
@@ -293,7 +302,7 @@ src/trueeta/
     errors.py            GbisError / GbisAuthError
 scripts/probe.py         프로브 CLI
 scripts/analyze.py       관측 로그 분석 (임계값 후보 제안)
-tests/                   113개 · fixtures 에 실응답 보관
+tests/                   121개 · fixtures 에 실응답 보관
 ```
 
 폴러와 웹서버는 **한 프로세스**다. 많아야 2분에 2콜 규모라 나눌 이유가 없고,

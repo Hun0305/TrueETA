@@ -20,6 +20,7 @@ from datetime import datetime
 
 import httpx
 
+from trueeta.clock import wait_for_sync
 from trueeta.config import BoardConfig, Preset, Settings, Stop
 from trueeta.gbis import GbisClient, GbisError
 from trueeta.gbis.envelope import as_list, find_key
@@ -296,6 +297,14 @@ async def run_poller(
     )
     if log_db.enabled:
         log.info("관측 로그: %s", settings.observations_path)
+
+    # 라즈베리파이는 RTC 가 없어 부팅 직후 시계가 틀리다. 그대로 두면
+    # 운행시간 판정·관측 ts·쿼터 날짜가 한꺼번에 어긋난다 (clock.py 참고).
+    if not await wait_for_sync():
+        log.warning(
+            "시계 동기화를 확인하지 못했다 — 현재 시각(%s)을 그대로 믿고 진행한다",
+            datetime.now().isoformat(timespec="seconds"),
+        )
 
     window_start = parse_hhmm(config.window_start)
     window_end = parse_hhmm(config.window_end)
