@@ -5,6 +5,11 @@
 
 설계 배경은 [architecture.md](architecture.md), API 필드는 [api-endpoints.md](api-endpoints.md).
 
+> **2026-09-29 — 이 문서의 위치 규칙은 실측으로 전제가 깨졌다.**
+> GBIS 는 회차지를 출발한 차만 도착정보에 넣어서, 회차점·기점에 서 있는 차는
+> 아예 보이지 않는다(관측 374행 중 0건). 회차대기는 "차 없음" 으로 나타난다.
+> 대안은 [judge-absence-design.md](judge-absence-design.md).
+
 ---
 
 ## 1. 무엇을 고치려는 건가
