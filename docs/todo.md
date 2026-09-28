@@ -111,6 +111,12 @@ RTC 없는 기기의 시계 오차) 중 시계는 고쳤고 프리셋은 복구�
 - [x] 정류장 ID 검증 (형식 검사 + 응답에 노선이 계속 없으면 화면 경고)
 - [ ] `systemd-time-wait-sync` 활성화 + 설치본 유닛에 반영 (sudo)
 
+## 로그 — [logging.md](logging.md)
+
+- [x] 로그를 파일로도 남기기 (`var/logs/trueeta.log` 30일, `access.log` 7일)
+      journald 는 라즈베리파이 OS 기본값(volatile)이라 재부팅하면 사라진다
+- [ ] (선택) journald 자체를 영구로 — 시스템 전체 로그가 필요할 때만. SD 쓰기 증가
+
 ## 그 외 남은 것
 
 - [ ] labwc autostart 키오스크 자동실행

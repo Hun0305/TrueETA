@@ -17,6 +17,7 @@
 - 즐겨찾기 설계: [docs/preset-design.md](docs/preset-design.md) (1~3단계 구현됨)
 - 운영계정 신청 자료: [docs/data-portal-submission.md](docs/data-portal-submission.md)
 - 사고 기록: [docs/incident-2026-09-24.md](docs/incident-2026-09-24.md) (관측 로그 이틀 유실)
+- 로그 위치: [docs/logging.md](docs/logging.md)
 
 ## 현재 단계
 
@@ -37,7 +38,7 @@ sudo apt install fonts-noto-cjk      # 한글 폰트. 없으면 화면 글자가
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '디코딩' 키
-.venv/bin/pytest                     # 168개, 네트워크·쿼터 0. 실제 var/ 는 건드리지 않는다
+.venv/bin/pytest                     # 175개, 네트워크·쿼터 0. 실제 var/ 는 건드리지 않는다
 ```
 
 서비스키는 **디코딩** 키를 넣는다. 인코딩 키를 넣으면 이중 인코딩으로 인증에 실패한다.
@@ -254,6 +255,18 @@ $P scripts/probe.py station-list --keyword "도담마을아이파크"
 .venv/bin/python scripts/analyze.py --compare
 ```
 
+## 로그
+
+```bash
+tail -f var/logs/trueeta.log          # 앱 로그 (30일 보관, 재부팅해도 남는다)
+tail -f var/logs/access.log           # HTTP 접속 (7일)
+journalctl -u trueeta -f              # 같은 내용 — 단 재부팅하면 사라진다
+```
+
+라즈베리파이 OS 는 SD 카드 수명 때문에 journald 를 메모리에만 둔다
+(`Storage=volatile`). 그래서 앱이 직접 파일로도 남긴다. 서비스키는 가려서 쓴다.
+자세히는 [docs/logging.md](docs/logging.md).
+
 ## 문제 해결
 
 **`[Errno 98] address already in use`**
@@ -304,6 +317,7 @@ src/trueeta/
   presets.py             프리셋 저장소 (SQLite)
   search.py              정류장·노선 검색 + 캐시
   clock.py               시계 동기화 대기 (RTC 없는 기기)
+  logfile.py             로그 파일 (날짜별 교체, 서비스키 가림)
   quota.py               일일 호출 카운터
   storage.py             관측 로그 + route_cycles (A·B 판정 나란히)
   web/index.html         전광판 화면 (빌드 없음)
@@ -316,7 +330,7 @@ src/trueeta/
     errors.py            GbisError / GbisAuthError
 scripts/probe.py         프로브 CLI
 scripts/analyze.py       관측 로그 분석 (임계값 후보 제안)
-tests/                   168개 · fixtures 에 실응답 보관
+tests/                   175개 · fixtures 에 실응답 보관
 ```
 
 폴러와 웹서버는 **한 프로세스**다. 많아야 2분에 2콜 규모라 나눌 이유가 없고,

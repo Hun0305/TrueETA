@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
+from trueeta import logfile
 from trueeta.config import (
     BoardConfig, Preset, Stop, load_board_config, load_settings, valid_station_id,
 )
@@ -33,9 +34,13 @@ _store: PresetStore | None = None
 _search: StationSearch | None = None
 
 
-def _setup_logging() -> None:
+def _setup_logging(var_dir: Path | None = None) -> Path | None:
     """uvicorn 의 --log-level 은 자기 로거만 건드린다.
-    폴러가 뭘 하고 있는지 보이려면 우리 로거에도 핸들러를 달아야 한다."""
+    폴러가 뭘 하고 있는지 보이려면 우리 로거에도 핸들러를 달아야 한다.
+
+    var_dir 를 주면 파일로도 남긴다 (logfile.py — journald 가 메모리에만 있어
+    재부팅하면 사라지기 때문). 앱 로그 파일 경로를 돌려준다.
+    """
     if not logging.getLogger("trueeta").handlers:
         logging.basicConfig(
             level=logging.INFO,
@@ -48,12 +53,21 @@ def _setup_logging() -> None:
     for noisy in ("httpx", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
+    # 그래도 새면 가린다 — journald 로 가는 스트림에도 한 겹
+    for handler in logging.getLogger().handlers:
+        if not any(isinstance(f, logfile.RedactServiceKey) for f in handler.filters):
+            handler.addFilter(logfile.RedactServiceKey())
+
+    return logfile.attach(var_dir) if var_dir is not None else None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _setup_logging()
     global _config
     settings = load_settings()
+    log_path = _setup_logging(settings.var_dir)
+    if log_path:
+        log.info("로그 파일: %s (journald 는 재부팅하면 사라진다)", log_path)
     config = load_board_config()
     _config = config
 
