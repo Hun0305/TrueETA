@@ -97,6 +97,34 @@ class StallTracker:
                 del self._seen[key]
 
 
+class AbsenceTracker:
+    """(정류장, 노선)마다 '차가 안 보이기 시작한 시각' 을 들고 있는다.
+
+    B안의 예상 M 은 "마지막 차가 지나간 뒤 얼마나 흘렀나" 에서 나온다.
+    차가 목록에서 사라지는 순간 = 직전 차가 우리 정류장을 지나간 순간이다.
+
+    벽시계(datetime)를 쓴다. 재시작 후 route_cycles 에서 복구해야 하기 때문이다
+    (monotonic 은 프로세스가 바뀌면 의미가 없다). 시계는 clock.py 가 맞춰준다.
+    """
+
+    def __init__(self) -> None:
+        self._since: dict[tuple[str, str], datetime] = {}
+
+    def restore(self, opened: dict[tuple[str, str], str]) -> None:
+        for key, iso in opened.items():
+            try:
+                self._since[key] = datetime.fromisoformat(iso)
+            except ValueError:
+                continue
+
+    def update(self, key: tuple[str, str], n_vehicles: int, now: datetime) -> datetime | None:
+        """이번 사이클 결과를 넣고, 차 없음이 시작된 시각을 돌려준다 (차가 있으면 None)."""
+        if n_vehicles > 0:
+            self._since.pop(key, None)
+            return None
+        return self._since.setdefault(key, now)
+
+
 #: 화면이 이 시간 안에 /api/board 를 부르지 않으면 안 보는 것으로 친다.
 #: 화면은 15초마다 부르므로 네 번 놓치면 꺼진 것으로 본다.
 SUBSCRIPTION_TTL_SEC = 60.0
@@ -114,6 +142,7 @@ class BoardState:
         self._boards: dict[str, Board] = {}
         self._last_seen: dict[str, float] = {}
         self.stalls = StallTracker()
+        self.absences = AbsenceTracker()
 
     # --- 보드 -----------------------------------------------------------
 

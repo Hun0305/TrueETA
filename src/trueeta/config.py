@@ -50,6 +50,11 @@ class Settings:
         return self.var_dir / "observations.db"
 
     @property
+    def routeinfo_path(self) -> Path:
+        """노선 정보(첫차·막차·배차간격) 하루 1회 캐시."""
+        return self.var_dir / "routeinfo.json"
+
+    @property
     def presets_path(self) -> Path:
         """프리셋은 지우면 안 되는 데이터라 관측 로그와 파일을 나눈다."""
         return self.var_dir / "presets.db"

@@ -8,7 +8,8 @@
 그걸 눈에 띄게 구분하는 것이 이 프로젝트의 목적이다.
 
 - 설계: [docs/architecture.md](docs/architecture.md)
-- **회차대기 판정 알고리즘: [docs/judge-algorithm.md](docs/judge-algorithm.md)**
+- 회차대기 판정 A안: [docs/judge-algorithm.md](docs/judge-algorithm.md) (전제가 깨짐)
+- **회차대기 판정 B안: [docs/judge-absence-design.md](docs/judge-absence-design.md)**
 - API 스펙: [docs/api-endpoints.md](docs/api-endpoints.md)
 - 개발 루프(자동 재시작·쿼터): [docs/development.md](docs/development.md)
 - 외부 접속·systemd: [docs/remote-access.md](docs/remote-access.md)
@@ -36,7 +37,7 @@ sudo apt install fonts-noto-cjk      # 한글 폰트. 없으면 화면 글자가
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '디코딩' 키
-.venv/bin/pytest                     # 121개, 네트워크·쿼터 0
+.venv/bin/pytest                     # 154개, 네트워크·쿼터 0
 ```
 
 서비스키는 **디코딩** 키를 넣는다. 인코딩 키를 넣으면 이중 인코딩으로 인증에 실패한다.
@@ -282,7 +283,9 @@ src/trueeta/
   __main__.py            python -m trueeta 진입점
   config.py              .env + config.yaml -> Settings / BoardConfig
   models.py              도메인 dataclass (GBIS 필드명은 여기까지 안 온다)
-  judge.py               회차대기 판정 — 순수 함수, 이 프로젝트의 핵심
+  judge.py               회차대기 판정 A안 (위치) — 기준선으로 유지
+  judge_absence.py       회차대기 판정 B안 (차 없음) — 순수 함수
+  routeinfo.py           노선 정보 하루 1회 캐시 (첫차·막차·배차간격)
   window.py              운행시간 창 (자정을 넘는다)
   poller.py              시간대별 주기 조회 -> 판정 -> 보드
   state.py               최신 보드 + 차량 정체 이력
@@ -291,7 +294,7 @@ src/trueeta/
   search.py              정류장·노선 검색 + 캐시
   clock.py               시계 동기화 대기 (RTC 없는 기기)
   quota.py               일일 호출 카운터
-  storage.py             관측 로그 (SQLite) — 임계값 튜닝 근거
+  storage.py             관측 로그 + route_cycles (A·B 판정 나란히)
   web/index.html         전광판 화면 (빌드 없음)
   web/edit.html          프리셋 편집 화면
   gbis/
@@ -302,7 +305,7 @@ src/trueeta/
     errors.py            GbisError / GbisAuthError
 scripts/probe.py         프로브 CLI
 scripts/analyze.py       관측 로그 분석 (임계값 후보 제안)
-tests/                   121개 · fixtures 에 실응답 보관
+tests/                   154개 · fixtures 에 실응답 보관
 ```
 
 폴러와 웹서버는 **한 프로세스**다. 많아야 2분에 2콜 규모라 나눌 이유가 없고,

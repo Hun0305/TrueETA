@@ -132,3 +132,15 @@ def test_board_request_is_a_subscription_heartbeat(client):
         "station_id": "S5", "name": "w", "routes": [{"name": "3", "dest_name": ""}]}]})
     client.get("/api/board", params={"preset": "출근2"})
     assert "출근2" in client.get("/api/health").json()["active_presets"]
+
+
+def test_service_key_never_reaches_the_logs(caplog):
+    """httpx 는 INFO 에서 요청 URL(=서비스키 포함)을 남긴다. 막혀 있어야 한다.
+
+    2026-09-29 에 journald 에서 키가 290줄 발견됐다.
+    """
+    import logging
+
+    api_mod._setup_logging()
+    assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
+    assert logging.getLogger("httpcore").getEffectiveLevel() >= logging.WARNING

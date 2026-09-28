@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
@@ -26,10 +26,12 @@ from trueeta.gbis import GbisClient, GbisError
 from trueeta.gbis.envelope import as_list, find_key
 from trueeta.gbis.parser import parse_arrivals
 from trueeta.judge import judge_arrival
+from trueeta.judge_absence import RouteSnapshot, default_min_travel, judge_absence
 from trueeta.models import Board, BoardEntry, Status
 from trueeta.presets import PresetStore
+from trueeta.routeinfo import RouteInfoCache
 from trueeta.state import BoardState
-from trueeta.storage import Observation, ObservationLog
+from trueeta.storage import Observation, ObservationLog, RouteCycle
 from trueeta.window import in_window, parse_hhmm
 
 log = logging.getLogger("trueeta.poller")
@@ -71,6 +73,79 @@ def wanted_routes(presets: list[Preset]) -> dict[str, set[str]]:
     return wanted
 
 
+@dataclass
+class BContext:
+    """B안 판정과 route_cycles 기록에 필요한 것들. 한 사이클 동안 쓴다."""
+
+    now: datetime
+    route_info: RouteInfoCache | None = None
+    learned: dict[tuple[str, str], int] = field(default_factory=dict)
+    cycles: list[RouteCycle] = field(default_factory=list)
+
+
+def record_cycle(
+    station_id: str,
+    route_name: str,
+    arrival,
+    a_status: str,
+    state: BoardState,
+    bctx: BContext,
+) -> None:
+    """(정류장, 노선) 한 줄을 B안으로 판정해 남긴다. 차가 없어도 남긴다.
+
+    arrival 이 None 이면 응답에 그 노선 자체가 없었던 것이다.
+    """
+    key = (station_id, route_name)
+    n = len(arrival.vehicles) if arrival else 0
+    first = arrival.vehicles[0] if arrival and arrival.vehicles else None
+    since = state.absences.update(key, n, bctx.now)
+
+    order = arrival.sta_order if arrival and arrival.sta_order > 0 else None
+    turn = arrival.turn_seq if arrival and arrival.turn_seq > 0 else None
+    route_id = arrival.route_id if arrival else ""
+
+    info = bctx.route_info.get(route_id) if (bctx.route_info and route_id) else None
+    after_turn = bool(order and turn and turn < order)
+    travel = bctx.learned.get(key) or default_min_travel(order, turn)
+    in_service = (
+        info.in_service(bctx.now, after_turn=after_turn, travel_sec=travel) if info else None
+    )
+    headway = info.headway_sec(bctx.now) if info else None
+
+    verdict = judge_absence(
+        RouteSnapshot(
+            n_vehicles=n,
+            eta1_sec=first.eta_sec if first else None,
+            flag=arrival.flag if arrival else "",
+            in_service=in_service,
+            absent_for_sec=(bctx.now - since).total_seconds() if since else None,
+            min_travel_sec=travel,
+            headway_sec=headway,
+        )
+    )
+    bctx.cycles.append(
+        RouteCycle(
+            station_id=station_id,
+            route_name=route_name,
+            route_id=route_id,
+            n_vehicles=n,
+            eta1_sec=first.eta_sec if first else None,
+            loc1=first.location_no if first else None,
+            sta_order=order,
+            turn_seq=turn,
+            flag=arrival.flag if arrival else "",
+            in_service=in_service,
+            absent_since=since.isoformat(timespec="seconds") if since else None,
+            headway_sec=headway,
+            a_status=a_status,
+            b_status=verdict.status,
+            b_min_sec=verdict.min_sec,
+            b_expected_sec=verdict.expected_sec,
+            b_overdue=verdict.overdue,
+        )
+    )
+
+
 def judge_station(
     station_id: str,
     routes: set[str],
@@ -79,13 +154,19 @@ def judge_station(
     stall_seconds: float,
     alive: set[tuple[str, str, str]],
     observations: list[Observation],
+    bctx: BContext | None = None,
 ) -> dict[tuple[str, str], RouteState]:
-    """응답 하나를 판정해 (정류장, 노선) -> RouteState 로 만든다."""
+    """응답 하나를 판정해 (정류장, 노선) -> RouteState 로 만든다.
+
+    bctx 가 있으면 같은 응답을 B안으로도 판정해 route_cycles 에 남긴다.
+    """
     judged: dict[tuple[str, str], RouteState] = {}
+    seen: set[str] = set()
 
     for arrival in parse_arrivals(items):
         if arrival.route_name not in routes:
             continue
+        seen.add(arrival.route_name)
 
         for vehicle in arrival.vehicles:
             state.stalls.observe(station_id, arrival.route_id, vehicle)
@@ -105,6 +186,9 @@ def judge_station(
             estimated_wait=first.estimated,
             at_standing=first.at_standing,
         )
+        if bctx is not None:
+            record_cycle(station_id, arrival.route_name, arrival,
+                         first.status.value, state, bctx)
 
         for slot, (vehicle, verdict) in enumerate(
             zip(arrival.vehicles, (first, second)), start=1
@@ -132,6 +216,11 @@ def judge_station(
                     reason=verdict.reason,
                 )
             )
+
+    # 응답에 아예 안 나온 노선도 '차 없음'으로 남긴다
+    if bctx is not None:
+        for route in sorted(routes - seen):
+            record_cycle(station_id, route, None, Status.NO_BUS.value, state, bctx)
     return judged
 
 
@@ -141,6 +230,7 @@ def fetch_and_judge(
     state: BoardState,
     stall_seconds: float,
     log_db: ObservationLog | None = None,
+    bctx: BContext | None = None,
 ) -> tuple[dict[tuple[str, str], RouteState], dict[str, str]]:
     """정류장마다 딱 한 번 호출한다. 실패는 정류장별로 격리한다."""
     judged: dict[tuple[str, str], RouteState] = {}
@@ -165,7 +255,8 @@ def fetch_and_judge(
         ]
         judged.update(
             judge_station(
-                station_id, routes, items, state, stall_seconds, alive, observations
+                station_id, routes, items, state, stall_seconds, alive,
+                observations, bctx,
             )
         )
 
@@ -175,6 +266,8 @@ def fetch_and_judge(
 
     if log_db is not None:
         log_db.write(observations)
+        if bctx is not None:
+            log_db.write_cycles(bctx.cycles)
 
     return judged, errors
 
@@ -263,6 +356,8 @@ def run_cycle(
     state: BoardState,
     log_db: ObservationLog | None = None,
     store: PresetStore | None = None,
+    route_info: RouteInfoCache | None = None,
+    learned: dict[tuple[str, str], int] | None = None,
 ) -> int:
     """한 사이클. 폴링한 정류장 수를 돌려준다 (다음 주기 계산용)."""
     presets = store.all() if store else config.presets
@@ -271,11 +366,23 @@ def run_cycle(
     active = resolve_presets(state.active_presets(), presets, default)
     wanted = wanted_routes(active)
 
+    bctx = BContext(
+        now=datetime.now().astimezone(), route_info=route_info, learned=learned or {}
+    )
     judged, errors = fetch_and_judge(
-        client, wanted, state, config.stall_seconds, log_db
+        client, wanted, state, config.stall_seconds, log_db, bctx
     )
     for preset in active:
         state.set(board_for_preset(preset, judged, errors), preset.name)
+
+    # 사이클마다 한 줄. 이게 없어서 잘못된 프리셋으로 이틀을 조용히 날렸다
+    # (docs/incident-2026-09-24.md).
+    unseen = sum(1 for c in bctx.cycles if c.b_status == "unseen")
+    log.info(
+        "사이클: 정류장 %d곳 · 노선 %d개 · 차 없음 %d%s",
+        len(wanted), len(bctx.cycles), unseen,
+        f" · 실패 {len(errors)}" if errors else "",
+    )
     return len(wanted)
 
 
@@ -297,6 +404,16 @@ async def run_poller(
     )
     if log_db.enabled:
         log.info("관측 로그: %s", settings.observations_path)
+
+    # B안 준비 — 노선 정보(하루 1회), 재시작 전 '차 없음' 복구, N 학습값
+    route_info = RouteInfoCache(
+        settings.routeinfo_path, fetch=lambda rid: client.route_info(rid).body
+    )
+    state.absences.restore(log_db.open_absences())
+    learned = log_db.learned_min_travel()
+    learned_at = datetime.now()
+    if learned:
+        log.info("B안 최소시간 학습값: %s", {f"{k[1]}번": v for k, v in learned.items()})
 
     # 라즈베리파이는 RTC 가 없어 부팅 직후 시계가 틀리다. 그대로 두면
     # 운행시간 판정·관측 ts·쿼터 날짜가 한꺼번에 어긋난다 (clock.py 참고).
@@ -335,8 +452,11 @@ async def run_poller(
 
         try:
             # httpx 동기 호출이라 이벤트 루프를 막지 않게 스레드로 뺀다
+            if (datetime.now() - learned_at).total_seconds() > 3600:
+                learned = log_db.learned_min_travel()
+                learned_at = datetime.now()
             stations = await asyncio.to_thread(
-                run_cycle, client, config, state, log_db, store
+                run_cycle, client, config, state, log_db, store, route_info, learned
             )
         except asyncio.CancelledError:
             raise

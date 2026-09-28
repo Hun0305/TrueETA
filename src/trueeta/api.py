@@ -40,6 +40,11 @@ def _setup_logging() -> None:
             format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
             datefmt="%H:%M:%S",
         )
+    # httpx 는 INFO 에서 요청 URL 을 통째로 남기는데, 서비스키가 쿼리스트링에
+    # 들어 있다. basicConfig(INFO) 가 이걸 같이 열어서 journald 에 키가 290줄
+    # 새어 나갔다 (2026-09-29 발견). 우리 로그만 INFO 로 두고 이쪽은 막는다.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 @asynccontextmanager
