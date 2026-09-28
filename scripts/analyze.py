@@ -6,6 +6,7 @@
     python scripts/analyze.py              # 전체 요약
     python scripts/analyze.py --days 3     # 최근 3일
     python scripts/analyze.py --route 25   # 노선 하나만
+    python scripts/analyze.py --compare    # 회차대기 A안·B안 비교 (route_cycles)
 
 답하려는 질문:
   1. 정상 주행일 때 ETA 감소율은 실제로 얼마인가  -> judge.stall_ratio
@@ -71,13 +72,163 @@ def eta_of(predict_sec, predict_min) -> int | None:
     return None
 
 
+# --- A안·B안 비교 (route_cycles) ------------------------------------------
+#
+# B안이 "차 없음, 최소 N · 예상 M" 이라 했을 때 실제로 몇 초 뒤 왔나를 맞춰본다.
+#   실제 대기 = (다음에 차가 보인 사이클 시각 - 이 사이클 시각) + 그때 1호차 ETA
+# 설계: docs/judge-absence-design.md
+
+#: 이보다 오래 뒤에 차가 보였다면 중간에 꺼졌거나 운행이 끊긴 것으로 보고 버린다
+MAX_MATCH_SEC = 90 * 60
+
+
+def _median(values):
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2]
+
+
+def _edge(order, turn):
+    if not order:
+        return None
+    if turn and 0 < turn < order:
+        return order - turn
+    return order - 1
+
+
+def compare(db: Path, days: int | None = None, route: str | None = None) -> dict:
+    """비교 결과를 dict 로 돌려주고 사람이 읽을 요약을 출력한다."""
+    conn = sqlite3.connect(db)
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "route_cycles" not in tables:
+        print("route_cycles 가 아직 없습니다. 서비스를 재시작해 B안 기록을 시작하세요.")
+        return {}
+
+    where, params = [], []
+    if days:
+        where.append("ts >= ?")
+        params.append((datetime.now().astimezone() - timedelta(days=days)).isoformat())
+    if route:
+        where.append("route_name = ?")
+        params.append(route)
+    clause = ("WHERE " + " AND ".join(where)) if where else ""
+    rows = conn.execute(
+        f"""SELECT ts, station_id, route_name, n_vehicles, eta1_sec, loc1, sta_order,
+                   turn_seq, absent_since, headway_sec, a_status, b_status,
+                   b_min_sec, b_expected_sec, b_overdue
+            FROM route_cycles {clause} ORDER BY station_id, route_name, ts""",
+        params,
+    ).fetchall()
+    if not rows:
+        print("해당 조건의 route_cycles 기록이 없습니다.")
+        return {}
+
+    groups: dict[tuple, list] = defaultdict(list)
+    for r in rows:
+        groups[(r[1], r[2])].append(r)
+
+    result: dict = {"routes": {}}
+    print(f"route_cycles {len(rows)}행  ({rows[0][0][:16]} ~ {max(r[0] for r in rows)[:16]})")
+
+    for (station, name), seq in groups.items():
+        res: dict = {}
+        a_count, b_count = defaultdict(int), defaultdict(int)
+        for r in seq:
+            a_count[r[10]] += 1
+            b_count[r[11]] += 1
+        res["a"], res["b"] = dict(a_count), dict(b_count)
+        res["a_waiting"] = a_count.get("waiting", 0)
+
+        # 1) B안 예측 vs 실제 대기
+        errors, under_min, matched = [], 0, 0
+        for i, r in enumerate(seq):
+            if r[11] != "unseen":
+                continue
+            t0 = datetime.fromisoformat(r[0])
+            for nxt in seq[i + 1:]:
+                if nxt[11] in ("off", "ended", "missing"):
+                    break
+                if nxt[3] > 0 and nxt[4] is not None:
+                    actual = (datetime.fromisoformat(nxt[0]) - t0).total_seconds() + nxt[4]
+                    if actual <= MAX_MATCH_SEC:
+                        matched += 1
+                        if r[12] is not None and actual < r[12]:
+                            under_min += 1
+                        if r[13] is not None:
+                            errors.append(actual - r[13])
+                    break
+        res["matched"] = matched
+        res["under_min"] = under_min
+        res["m_bias"] = _median(errors)
+        res["m_abs_err"] = _median([abs(e) for e in errors])
+
+        # 2) '차 없음' 구간 길이 vs 배차간격
+        gaps = []
+        for i, r in enumerate(seq):
+            if r[3] > 0 and i > 0 and seq[i - 1][3] == 0 and seq[i - 1][8] and seq[i - 1][9]:
+                gap = (datetime.fromisoformat(r[0]) - datetime.fromisoformat(seq[i - 1][8])).total_seconds()
+                gaps.append(gap / seq[i - 1][9])
+        res["gap_over_headway"] = sum(1 for g in gaps if g > 1)
+        res["gaps"] = len(gaps)
+
+        # 3) N 재학습 — '차 없음 -> 차 있음' 전환의 ETA, 경계 근처에서 잡힌 것만
+        firsts = []
+        for i, r in enumerate(seq):
+            if i and seq[i - 1][3] == 0 and r[3] > 0 and r[4] is not None and r[5] is not None:
+                edge = _edge(r[6], r[7])
+                if edge and r[5] >= edge - 2:
+                    firsts.append(r[4])
+        res["n_learned"] = _median(firsts) if len(firsts) >= 3 else None
+        res["n_samples"] = len(firsts)
+        res["n_current"] = _median([r[12] for r in seq if r[12] is not None])
+
+        result["routes"][(station, name)] = res
+
+        # --- 출력
+        print(f"\n=== {name}번 ({station}) — {len(seq)}사이클 ===")
+        print("  B안 판정: " + "  ".join(f"{k} {v}" for k, v in sorted(b_count.items(), key=lambda x: -x[1])))
+        print(f"  A안 판정: " + "  ".join(f"{k} {v}" for k, v in sorted(a_count.items(), key=lambda x: -x[1])))
+        if res["a_waiting"] == 0:
+            print("    -> A안 위치 규칙이 한 번도 발동하지 않았다")
+        if b_count.get("missing"):
+            print(f"    !! 응답에 노선 없음 {b_count['missing']}회 — 정류장·노선 설정 확인")
+        if matched:
+            print(f"  B안 예측 검증 ({matched}건 — 차 없음 뒤 실제로 온 시각과 대조)")
+            if res["m_bias"] is not None:
+                print(f"    예상 M 오차: 중앙 {res['m_bias'] / 60:+.1f}분 (＋면 실제가 더 늦음), "
+                      f"절대오차 중앙 {res['m_abs_err'] / 60:.1f}분")
+            print(f"    최소 N 보다 빨리 온 경우: {under_min}건"
+                  + ("  <- N 이 너무 크다" if under_min > matched * 0.1 else ""))
+        else:
+            print("  B안 예측 검증: 아직 대조할 쌍이 없다 (차 없음 뒤 차가 다시 보인 기록 필요)")
+        if gaps:
+            print(f"  차 없음 구간이 배차간격을 넘긴 경우: {res['gap_over_headway']}/{len(gaps)}")
+        if res["n_learned"] is not None:
+            print(f"  N 재학습: {res['n_learned']}초 (표본 {len(firsts)}) — 현재 사용 중 {res['n_current']}초")
+        else:
+            print(f"  N 재학습: 표본 {len(firsts)}개 — 3개 이상 필요")
+
+    conn.close()
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--days", type=int, help="최근 N일만")
     parser.add_argument("--route", help="노선번호 (예: 25)")
     parser.add_argument("--db", type=Path, default=DB)
+    parser.add_argument("--compare", action="store_true",
+                        help="회차대기 A안·B안 비교 (route_cycles)")
     args = parser.parse_args()
+
+    if args.compare:
+        if not args.db.exists():
+            print(f"{args.db} 가 없습니다.", file=sys.stderr)
+            return 1
+        compare(args.db, args.days, args.route)
+        return 0
 
     if not args.db.exists():
         print(f"{args.db} 가 없습니다. 폴러를 돌려 로그를 쌓으세요.", file=sys.stderr)

@@ -25,6 +25,16 @@ from trueeta.window import parse_hhmm, span_seconds
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+def valid_station_id(value: Any) -> bool:
+    """GBIS 정류소 ID 는 숫자다 (예: 228001059).
+
+    2026-09-24 사고 때 기본 프리셋이 'S4' 로 바뀌었는데 아무 데서도 걸리지 않았다.
+    GBIS 는 없는 ID 에 resultCode=4(결과 없음)를 줘서 '막차 후'와 구분도 안 됐다.
+    """
+    text = str(value).strip()
+    return text.isdigit() and 6 <= len(text) <= 12
+
+
 def route_key(value: Any) -> str:
     """노선번호 비교용 정규화.
 
@@ -193,11 +203,19 @@ def load_settings(*, require_key: bool = True) -> Settings:
         service_key=key,
         timeout=float(os.environ.get("TRUEETA_TIMEOUT", "10")),
         fixture_dir=PROJECT_ROOT / "tests" / "fixtures",
-        var_dir=PROJECT_ROOT / "var",
+        # 테스트는 이걸 임시 디렉터리로 돌린다 (tests/conftest.py).
+        # 2026-09-24 에 테스트가 실제 var/presets.db 를 덮어써 이틀을 날렸다.
+        var_dir=Path(os.environ.get("TRUEETA_VAR_DIR") or PROJECT_ROOT / "var"),
     )
 
 
 def _load_stops(entries: list[dict]) -> tuple[Stop, ...]:
+    for entry in entries or []:
+        if not valid_station_id(entry.get("station_id")):
+            raise SystemExit(
+                f"config.yaml 의 station_id 가 정류소 ID 형식이 아닙니다: {entry.get('station_id')!r}\n"
+                "  scripts/probe.py station-list --keyword <정류장이름> 으로 찾으세요."
+            )
     return tuple(
         Stop(
             # API 가 int 로 돌려주지만 URL 파라미터로 나가므로 문자열로 고정

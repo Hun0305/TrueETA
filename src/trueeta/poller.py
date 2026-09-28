@@ -26,7 +26,9 @@ from trueeta.gbis import GbisClient, GbisError
 from trueeta.gbis.envelope import as_list, find_key
 from trueeta.gbis.parser import parse_arrivals
 from trueeta.judge import judge_arrival
-from trueeta.judge_absence import RouteSnapshot, default_min_travel, judge_absence
+from trueeta.judge_absence import (
+    MISSING, RouteSnapshot, default_min_travel, judge_absence,
+)
 from trueeta.models import Board, BoardEntry, Status
 from trueeta.presets import PresetStore
 from trueeta.routeinfo import RouteInfoCache
@@ -81,6 +83,13 @@ class BContext:
     route_info: RouteInfoCache | None = None
     learned: dict[tuple[str, str], int] = field(default_factory=dict)
     cycles: list[RouteCycle] = field(default_factory=list)
+    #: 정류장 -> 화면에 띄울 설정 경고 (응답에 노선이 계속 없음)
+    warnings: dict[str, str] = field(default_factory=dict)
+
+
+#: 응답에 노선이 이만큼 연속으로 없으면 설정 오류로 보고 경고한다.
+#: 한두 번은 GBIS 쪽 일시 오류일 수 있다.
+MISSING_WARN_AFTER = 3
 
 
 def record_cycle(
@@ -98,7 +107,23 @@ def record_cycle(
     key = (station_id, route_name)
     n = len(arrival.vehicles) if arrival else 0
     first = arrival.vehicles[0] if arrival and arrival.vehicles else None
-    since = state.absences.update(key, n, bctx.now)
+    listed = arrival is not None
+
+    if listed:
+        state.missing.pop(key, None)
+        since = state.absences.update(key, n, bctx.now)
+    else:
+        # 노선이 응답에 아예 없다. '차 없음' 이 아니므로 차 없음 추적은 건드리지 않는다
+        since = None
+        count = state.missing.get(key, 0) + 1
+        state.missing[key] = count
+        if count >= MISSING_WARN_AFTER:
+            msg = f"{route_name}번이 이 정류장 응답에 없음 — 설정 확인"
+            bctx.warnings[station_id] = (
+                bctx.warnings[station_id] + "; " + msg if station_id in bctx.warnings else msg
+            )
+            if count == MISSING_WARN_AFTER:
+                log.warning("%s: %s (%d사이클 연속)", station_id, msg, count)
 
     order = arrival.sta_order if arrival and arrival.sta_order > 0 else None
     turn = arrival.turn_seq if arrival and arrival.turn_seq > 0 else None
@@ -121,6 +146,7 @@ def record_cycle(
             absent_for_sec=(bctx.now - since).total_seconds() if since else None,
             min_travel_sec=travel,
             headway_sec=headway,
+            listed=listed,
         )
     )
     bctx.cycles.append(
@@ -372,15 +398,18 @@ def run_cycle(
     judged, errors = fetch_and_judge(
         client, wanted, state, config.stall_seconds, log_db, bctx
     )
+    shown = {**bctx.warnings, **errors}   # 조회 실패가 설정 경고보다 우선
     for preset in active:
-        state.set(board_for_preset(preset, judged, errors), preset.name)
+        state.set(board_for_preset(preset, judged, shown), preset.name)
 
     # 사이클마다 한 줄. 이게 없어서 잘못된 프리셋으로 이틀을 조용히 날렸다
     # (docs/incident-2026-09-24.md).
     unseen = sum(1 for c in bctx.cycles if c.b_status == "unseen")
+    missing = sum(1 for c in bctx.cycles if c.b_status == MISSING)
     log.info(
-        "사이클: 정류장 %d곳 · 노선 %d개 · 차 없음 %d%s",
+        "사이클: 정류장 %d곳 · 노선 %d개 · 차 없음 %d%s%s",
         len(wanted), len(bctx.cycles), unseen,
+        f" · 노선 누락 {missing}" if missing else "",
         f" · 실패 {len(errors)}" if errors else "",
     )
     return len(wanted)

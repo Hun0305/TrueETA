@@ -139,3 +139,9 @@ def test_startup_log_format_matches_its_arguments():
     placeholders = fmt.count("%d") + fmt.count("%s")
     args = len([l for l in call.split("\n")[1:] if l.strip().endswith(",")])
     assert placeholders == args, f"자리 {placeholders}개 vs 인자 {args}개"
+
+
+def test_non_numeric_station_id_in_config_is_rejected(tmp_path):
+    with pytest.raises(SystemExit):
+        load_board_config(_write(tmp_path, {**BASE, "stops": [
+            {"station_id": "S4", "name": "x", "routes": ["9"]}]}))

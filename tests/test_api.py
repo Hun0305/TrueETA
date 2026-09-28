@@ -56,7 +56,7 @@ def test_search_marks_both_directions(client):
 
 
 def test_routes_endpoint_returns_destination(client):
-    body = client.get("/api/search/routes", params={"station_id": "S1"}).json()
+    body = client.get("/api/search/routes", params={"station_id": "900000001"}).json()
     assert body["routes"][0]["dest_name"] == "미금역"
 
 
@@ -85,7 +85,7 @@ def test_empty_selection_is_rejected(client):
     assert client.put("/api/presets/빈것", json={"stops": []}).status_code == 400
     assert client.put(
         "/api/presets/빈것",
-        json={"stops": [{"station_id": "S9", "name": "x", "routes": []}]},
+        json={"stops": [{"station_id": "900000009", "name": "x", "routes": []}]},
     ).status_code == 400
 
 
@@ -96,7 +96,7 @@ def test_default_preset_cannot_be_deleted(client):
 
 def test_delete_removes_a_normal_preset(client):
     client.put("/api/presets/임시", json={"stops": [{
-        "station_id": "S2", "name": "x", "routes": [{"name": "1", "dest_name": ""}]}]})
+        "station_id": "900000002", "name": "x", "routes": [{"name": "1", "dest_name": ""}]}]})
     assert client.delete("/api/presets/임시").status_code == 200
     names = [p["name"] for p in client.get("/api/presets").json()["presets"]]
     assert "임시" not in names
@@ -105,14 +105,14 @@ def test_delete_removes_a_normal_preset(client):
 def test_saving_keeps_the_default_flag(client):
     """편집해도 기본 여부가 뒤바뀌면 안 된다."""
     client.put("/api/presets/집앞", json={"stops": [{
-        "station_id": "S3", "name": "y", "routes": [{"name": "7", "dest_name": ""}]}]})
+        "station_id": "900000003", "name": "y", "routes": [{"name": "7", "dest_name": ""}]}]})
     presets = {p["name"]: p for p in client.get("/api/presets").json()["presets"]}
     assert presets["집앞"]["default"] is True
 
 
 def test_changing_default(client):
     client.put("/api/presets/출근", json={"stops": [{
-        "station_id": "S4", "name": "z", "routes": [{"name": "9", "dest_name": ""}]}]})
+        "station_id": "900000004", "name": "z", "routes": [{"name": "9", "dest_name": ""}]}]})
     assert client.post("/api/presets/출근/default").status_code == 200
     presets = {p["name"]: p for p in client.get("/api/presets").json()["presets"]}
     assert presets["출근"]["default"] is True and presets["집앞"]["default"] is False
@@ -129,7 +129,7 @@ def test_unknown_preset_falls_back_to_default(client):
 
 def test_board_request_is_a_subscription_heartbeat(client):
     client.put("/api/presets/출근2", json={"stops": [{
-        "station_id": "S5", "name": "w", "routes": [{"name": "3", "dest_name": ""}]}]})
+        "station_id": "900000005", "name": "w", "routes": [{"name": "3", "dest_name": ""}]}]})
     client.get("/api/board", params={"preset": "출근2"})
     assert "출근2" in client.get("/api/health").json()["active_presets"]
 
@@ -144,3 +144,12 @@ def test_service_key_never_reaches_the_logs(caplog):
     api_mod._setup_logging()
     assert logging.getLogger("httpx").getEffectiveLevel() >= logging.WARNING
     assert logging.getLogger("httpcore").getEffectiveLevel() >= logging.WARNING
+
+
+def test_non_numeric_station_id_is_rejected(client):
+    """9/24 사고 때 'S4' 가 기본 프리셋에 들어가 이틀을 날렸다. 입구에서 막는다."""
+    r = client.put("/api/presets/잘못", json={"stops": [{
+        "station_id": "S4", "name": "z", "routes": [{"name": "9", "dest_name": ""}]}]})
+    assert r.status_code == 400
+    names = [p["name"] for p in client.get("/api/presets").json()["presets"]]
+    assert "잘못" not in names

@@ -12,7 +12,9 @@ from pathlib import Path
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
-from trueeta.config import BoardConfig, Preset, Stop, load_board_config, load_settings
+from trueeta.config import (
+    BoardConfig, Preset, Stop, load_board_config, load_settings, valid_station_id,
+)
 from trueeta.gbis import GbisClient, GbisError
 from trueeta.presets import PresetStore
 from trueeta.search import StationSearch
@@ -202,6 +204,9 @@ def save_preset(name: str, payload: dict = Body(...)) -> JSONResponse:
         routes = entry.get("routes") or []
         if not station_id or not routes:
             continue
+        if not valid_station_id(station_id):
+            # 9/24 사고 때 'S4' 같은 값이 기본 프리셋에 들어가 이틀을 날렸다
+            raise HTTPException(400, f"정류소 ID 형식이 아닙니다: {station_id}")
         names = []
         for route in routes:
             route_name = str(route.get("name") if isinstance(route, dict) else route).strip()

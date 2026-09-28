@@ -143,6 +143,8 @@ class BoardState:
         self._last_seen: dict[str, float] = {}
         self.stalls = StallTracker()
         self.absences = AbsenceTracker()
+        #: (정류장, 노선) -> 응답에 연속으로 없었던 사이클 수
+        self.missing: dict[tuple[str, str], int] = {}
 
     # --- 보드 -----------------------------------------------------------
 

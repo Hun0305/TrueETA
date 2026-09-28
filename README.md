@@ -37,7 +37,7 @@ sudo apt install fonts-noto-cjk      # 한글 폰트. 없으면 화면 글자가
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '디코딩' 키
-.venv/bin/pytest                     # 154개, 네트워크·쿼터 0
+.venv/bin/pytest                     # 168개, 네트워크·쿼터 0. 실제 var/ 는 건드리지 않는다
 ```
 
 서비스키는 **디코딩** 키를 넣는다. 인코딩 키를 넣으면 이중 인코딩으로 인증에 실패한다.
@@ -248,6 +248,12 @@ $P scripts/probe.py station-list --keyword "도담마을아이파크"
 응답은 `tests/fixtures/` 에 저장된다. 이렇게 박제해 둔 덕에
 판정 로직 개발은 쿼터 0건으로 돌아간다.
 
+회차대기 A안·B안 비교 (B안 예측을 실제 도착과 대조):
+
+```bash
+.venv/bin/python scripts/analyze.py --compare
+```
+
 ## 문제 해결
 
 **`[Errno 98] address already in use`**
@@ -271,6 +277,11 @@ sudo systemctl enable --now systemd-time-wait-sync
 **`SERVICE_KEY_IS_NOT_REGISTERED_ERROR`**
 `.env` 의 키가 인코딩 키이거나, 활용신청이 아직 승인 전이다.
 승인 직후라면 반영까지 최대 1시간 걸린다.
+
+**화면 위에 "N번이 이 정류장 응답에 없음 — 설정 확인"**
+프리셋의 정류장·노선 조합이 틀렸다. GBIS 는 차가 없는 노선도 목록에 넣으므로,
+노선이 3사이클 연속 아예 안 오면 설정 오류로 본다. `/edit` 에서 정류장을 다시 고를 것
+(양방향 중 반대편을 골랐을 가능성이 크다).
 
 **화면이 전부 `운행종료`**
 운행시간(`05:50~00:10`) 밖이다. 레이아웃만 보려면 `/?demo=1`.
@@ -305,7 +316,7 @@ src/trueeta/
     errors.py            GbisError / GbisAuthError
 scripts/probe.py         프로브 CLI
 scripts/analyze.py       관측 로그 분석 (임계값 후보 제안)
-tests/                   154개 · fixtures 에 실응답 보관
+tests/                   168개 · fixtures 에 실응답 보관
 ```
 
 폴러와 웹서버는 **한 프로세스**다. 많아야 2분에 2콜 규모라 나눌 이유가 없고,

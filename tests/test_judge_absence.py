@@ -5,7 +5,7 @@
 """
 
 from trueeta.judge_absence import (
-    ENDED, OFF, RUNNING, UNSEEN, RouteSnapshot,
+    ENDED, MISSING, OFF, RUNNING, UNSEEN, RouteSnapshot,
     default_min_travel, edge_distance, judge_absence,
 )
 
@@ -85,3 +85,12 @@ def test_default_minimum_is_close_to_measured():
 
 def test_default_minimum_without_order_info():
     assert default_min_travel(None, None) > 0
+
+
+def test_route_missing_from_response_is_not_a_turnaround_wait():
+    """GBIS 는 차가 없는 노선도 목록에 넣는다 (fixture 5개 전부).
+    노선이 아예 없으면 설정 오류다. 이걸 '회차지 대기' 로 읽으면 가짜 ID 로도
+    영원히 회차대기라고 말하게 된다."""
+    v = judge_absence(snap(listed=False))
+    assert v.status == MISSING
+    assert v.min_sec is None and v.expected_sec is None

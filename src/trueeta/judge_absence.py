@@ -25,6 +25,7 @@ RUNNING = "running"  # 차가 오는 중
 UNSEEN = "unseen"  # 운행 중인데 차가 안 보임 = 회차지 대기(또는 배차 공백)
 OFF = "off"  # 이 노선의 운행시간 밖
 ENDED = "ended"  # flag=STOP
+MISSING = "missing"  # 응답에 노선 자체가 없음 = 설정이 틀렸을 가능성
 
 #: N 을 학습하기 전 기본값. 실측 22번 약 43초/정거장, 25번 약 57초/정거장.
 SEC_PER_STOP = 50
@@ -42,6 +43,10 @@ class RouteSnapshot:
     absent_for_sec: float | None  # 차가 안 보인 지 몇 초. 모르면 None
     min_travel_sec: int  # N
     headway_sec: int | None  # H. 모르면 None
+    #: 응답에 이 노선이 있었나. GBIS 는 차가 없는 노선도 목록에 넣으므로
+    #: (fixture 5개 전부 확인) 노선이 아예 없다면 '차 없음'이 아니라
+    #: 정류장·노선 설정이 틀린 것이다. 이걸 회차지 대기로 읽으면 안 된다.
+    listed: bool = True
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,9 @@ def default_min_travel(sta_order: int | None, turn_seq: int | None) -> int:
 
 
 def judge_absence(snap: RouteSnapshot) -> BVerdict:
+    if not snap.listed:
+        return BVerdict(MISSING, reason="응답에 노선 없음 — 정류장·노선 설정 확인")
+
     if snap.flag == "STOP":
         return BVerdict(ENDED, reason="flag=STOP")
 

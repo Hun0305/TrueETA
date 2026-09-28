@@ -132,6 +132,7 @@ def test_real_response_writes_a_row_for_every_wanted_route():
     assert got["22"].sta_order == 31 and got["22"].turn_seq == 20
     assert got["59"].n_vehicles > 0 and got["59"].b_status == "running"
     assert got["999"].n_vehicles == 0 and got["999"].a_status == "no_bus"
+    assert got["999"].b_status == "missing"      # 응답에 없는 노선은 회차대기가 아니다
 
 
 def test_a_and_b_are_recorded_side_by_side():
@@ -149,3 +150,32 @@ def test_learned_minimum_overrides_the_default():
     judge_station("228001059", {"22"}, _items("228001059"),
                   BoardState(), 240, set(), [], bctx)
     assert bctx.cycles[0].b_min_sec == 431
+
+
+def test_missing_route_warns_after_consecutive_cycles():
+    """한두 번은 GBIS 일시 오류일 수 있다. 3사이클 연속이면 화면에 경고."""
+    state = BoardState()
+    for i in range(3):
+        bctx = BContext(now=datetime.now().astimezone())
+        judge_station("228001059", {"999"}, _items("228001059"),
+                      state, 240, set(), [], bctx)
+        assert ("228001059" in bctx.warnings) == (i == 2)
+    assert "999번" in bctx.warnings["228001059"]
+
+
+def test_missing_counter_resets_when_route_comes_back():
+    state = BoardState()
+    for _ in range(2):
+        judge_station("228001059", {"22"}, [], state, 240, set(), [],
+                      BContext(now=datetime.now().astimezone()))
+    judge_station("228001059", {"22"}, _items("228001059"), state, 240, set(), [],
+                  BContext(now=datetime.now().astimezone()))
+    assert ("228001059", "22") not in state.missing
+
+
+def test_missing_route_does_not_start_an_absence():
+    """설정 오류를 '차 없음 시작' 으로 치면 예상 M 이 엉터리가 된다."""
+    state = BoardState()
+    judge_station("228001059", {"999"}, _items("228001059"), state, 240, set(), [],
+                  BContext(now=datetime.now().astimezone()))
+    assert state.absences._since == {}
