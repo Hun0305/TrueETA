@@ -81,7 +81,8 @@ flowchart LR
 | 설정 | `config.yaml`(프리셋 씨앗·주기·예산), `.env`(서비스키) | [config.py](../src/trueeta/config.py) |
 | 화면 | 전광판 `/`, 프리셋 편집 `/edit`. 빌드 없는 HTML | [web/](../src/trueeta/web/) |
 | 원격 | Cloudflare Tunnel ([remote-access.md](remote-access.md)) | |
-| 아직 | 노선 정보 캐시, 적응형 주기, 키오스크 자동실행, 야간 화면 off | |
+| 키오스크 | labwc autostart → Chromium `--kiosk`, 꺼지면 재시작 | [scripts/kiosk.sh](../scripts/kiosk.sh) · [kiosk.md](kiosk.md) |
+| 아직 | 적응형 주기, 야간 화면 off, 화면에 B안 반영 | |
 
 > **노선 정보 캐시는 구현하지 않았다.** 첫차·막차를 하루 1회 받아 캐시하기로
 > 했으나 `config.yaml` 의 `service_window` 에 손으로 적어둔 상태다.
@@ -230,8 +231,8 @@ flowchart LR
 
 ## 4. 설정 · 운영 메모
 
-- 해상도가 안 잡히면 `/boot/firmware/cmdline.txt` 끝에 `video=HDMI-A-1:1024x768@60`
-- 키오스크 자동실행: `~/.config/labwc/autostart`에 Chromium `--kiosk http://localhost:<port>` 등록
+- 해상도가 안 잡히면 `/boot/firmware/cmdline.txt` 끝에 `video=HDMI-A-2:1024x768@60` (이 기기의 출력 이름은 **HDMI-A-2** — `wlr-randr` 로 확인. 지금은 1024×768 이 자동으로 잡혀 필요 없다)
+- 키오스크 자동실행: 구현됨 — [kiosk.md](kiosk.md)
 - 화면 꺼짐 방지: raspi-config의 Screen Blanking 끄기
 - 서비스키는 `.env`에만, git에 올리지 않기
 

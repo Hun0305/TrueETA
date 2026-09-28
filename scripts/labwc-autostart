@@ -1,0 +1,7 @@
+# ~/.config/labwc/autostart 에 들어가는 줄 (저장소 사본).
+#
+# labwc 가 --merge-config(-m) 으로 떠 있어서 이 파일은 시스템 autostart
+# (/etc/xdg/labwc/autostart — 패널·바탕화면)를 대체하지 않고 거기에 더해진다.
+# 키오스크 로직은 scripts/kiosk.sh 에 있다. 끄려면 이 줄을 지우거나
+# touch ~/.config/trueeta/kiosk.disabled
+/home/hun/TrueETA/scripts/kiosk.sh &

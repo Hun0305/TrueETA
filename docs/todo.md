@@ -119,7 +119,7 @@ RTC 없는 기기의 시계 오차) 중 시계는 고쳤고 프리셋은 복구�
 
 ## 그 외 남은 것
 
-- [ ] labwc autostart 키오스크 자동실행
-- [ ] 야간 화면 off (`wlr-randr`)
+- [x] labwc autostart 키오스크 자동실행 — [kiosk.md](kiosk.md). 재부팅 후 확인 필요
+- [ ] 야간 화면 off (`wlr-randr --output HDMI-A-2 --off`) — 출력 이름은 HDMI-A-2
 - [ ] 적응형 폴링 (도착 임박 시 주기 단축) — `near`/`near_threshold_sec` 는
       설정에만 있고 폴러가 아직 안 쓴다

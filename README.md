@@ -18,6 +18,7 @@
 - 운영계정 신청 자료: [docs/data-portal-submission.md](docs/data-portal-submission.md)
 - 사고 기록: [docs/incident-2026-09-24.md](docs/incident-2026-09-24.md) (관측 로그 이틀 유실)
 - 로그 위치: [docs/logging.md](docs/logging.md)
+- 키오스크 자동실행: [docs/kiosk.md](docs/kiosk.md)
 
 ## 현재 단계
 
@@ -38,7 +39,7 @@ sudo apt install fonts-noto-cjk      # 한글 폰트. 없으면 화면 글자가
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '디코딩' 키
-.venv/bin/pytest                     # 175개, 네트워크·쿼터 0. 실제 var/ 는 건드리지 않는다
+.venv/bin/pytest                     # 182개, 네트워크·쿼터 0. 실제 var/ 는 건드리지 않는다
 ```
 
 서비스키는 **디코딩** 키를 넣는다. 인코딩 키를 넣으면 이중 인코딩으로 인증에 실패한다.
@@ -255,6 +256,19 @@ $P scripts/probe.py station-list --keyword "도담마을아이파크"
 .venv/bin/python scripts/analyze.py --compare
 ```
 
+## 키오스크
+
+전원만 꽂으면 8인치 화면에 전광판이 뜬다. labwc 자동 로그인 → `~/.config/labwc/autostart`
+→ [scripts/kiosk.sh](scripts/kiosk.sh) 가 서버를 기다렸다가 Chromium 을 키오스크로 띄우고,
+꺼지면 5초 뒤 다시 띄운다.
+
+```bash
+touch ~/.config/trueeta/kiosk.disabled     # 끄기
+tail var/logs/kiosk.log                    # 기동·종료 기록
+```
+
+자세히는 [docs/kiosk.md](docs/kiosk.md).
+
 ## 로그
 
 ```bash
@@ -329,8 +343,9 @@ src/trueeta/
     envelope.py          JSON/XML 판별 · resultCode 해석 (순수 함수)
     errors.py            GbisError / GbisAuthError
 scripts/probe.py         프로브 CLI
+scripts/kiosk.sh         키오스크 (labwc autostart 에서 실행)
 scripts/analyze.py       관측 로그 분석 (임계값 후보 제안)
-tests/                   175개 · fixtures 에 실응답 보관
+tests/                   182개 · fixtures 에 실응답 보관
 ```
 
 폴러와 웹서버는 **한 프로세스**다. 많아야 2분에 2콜 규모라 나눌 이유가 없고,
