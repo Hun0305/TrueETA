@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!--
+  ~/.config/labwc/rc.xml 의 저장소 사본.
+
+  labwc 가 -m(merge-config) 으로 떠 있어서 이 파일은 시스템 설정
+  (/etc/xdg/labwc/rc.xml — Ctrl+Alt+T 터미널 등)에 더해진다.
+  Ctrl+Alt+K 는 시스템 단축키와 겹치지 않는다 (확인함).
+-->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <keyboard>
+    <!-- 키오스크 잠깐 나가기 / 돌아가기 -->
+    <keybind key="C-A-k">
+      <action name="Execute" command="/home/hun/TrueETA/scripts/kiosk-toggle.sh"/>
+    </keybind>
+  </keyboard>
+</openbox_config>

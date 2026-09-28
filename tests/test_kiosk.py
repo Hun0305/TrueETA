@@ -73,3 +73,62 @@ def test_autostart_copy_points_to_the_script():
     line = [l for l in (ROOT / "scripts" / "labwc-autostart").read_text().splitlines()
             if l and not l.startswith("#")]
     assert line == ["/home/hun/TrueETA/scripts/kiosk.sh &"]
+
+
+# --- 잠깐 나가기 (Ctrl+Alt+K) ----------------------------------------------
+
+TOGGLE = ROOT / "scripts" / "kiosk-toggle.sh"
+
+
+def test_toggle_is_valid_bash():
+    assert subprocess.run(["bash", "-n", str(TOGGLE)]).returncode == 0
+
+
+def test_keybind_runs_the_toggle():
+    import xml.dom.minidom as dom
+
+    doc = dom.parse(str(ROOT / "scripts" / "labwc-rc.xml"))
+    binds = {k.getAttribute("key"): k for k in doc.getElementsByTagName("keybind")}
+    assert "C-A-k" in binds
+    action = binds["C-A-k"].getElementsByTagName("action")[0]
+    assert action.getAttribute("command").endswith("scripts/kiosk-toggle.sh")
+
+
+def test_keybind_does_not_shadow_system_shortcuts():
+    """Ctrl+Alt+T(터미널) 등 시스템 단축키와 겹치면 안 된다."""
+    import re
+
+    system = Path("/etc/xdg/labwc/rc.xml")
+    if not system.exists():
+        return
+    taken = set(re.findall(r'keybind key="([^"]+)"', system.read_text()))
+    assert "C-A-k" not in taken
+
+
+def test_pause_lives_in_runtime_dir_so_reboot_restores_kiosk():
+    """잠깐 나가기는 재부팅하면 풀려야 한다 — 전원만 꽂으면 전광판으로."""
+    for f in (SCRIPT, TOGGLE):
+        text = f.read_text(encoding="utf-8")
+        assert 'PAUSE="${XDG_RUNTIME_DIR' in text or 'PAUSE="$RUNTIME/' in text
+        assert "/run/user/" in text
+
+
+def test_loop_stops_on_pause_as_well_as_disable():
+    assert 'while [ ! -e "$DISABLE" ] && [ ! -e "$PAUSE" ]' in SCRIPT.read_text(encoding="utf-8")
+
+
+def test_chromium_does_not_inherit_the_lock():
+    """물려주면 루프를 꺼도 Chromium 이 잠금을 쥐고 있어 새 루프가 물러났다."""
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "flock -n 9" in text
+    assert '"$URL" > /dev/null 2>&1 9>&-' in text
+
+
+def test_toggle_kills_only_the_kiosk_main_process():
+    """pkill -f 'chromium.*trueeta-kiosk' 는 그 문자열이 든 다른 셸까지 죽였다."""
+    code = "\n".join(
+        l for l in TOGGLE.read_text(encoding="utf-8").splitlines()
+        if not l.lstrip().startswith("#")          # 주석엔 겪은 일로 적혀 있다
+    )
+    assert "pkill -f" not in code
+    assert "pgrep -x chromium" in code and "--type=" in code

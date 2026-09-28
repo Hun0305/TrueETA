@@ -4,7 +4,8 @@
 # labwc 가 로그인할 때 ~/.config/labwc/autostart 에서 이 스크립트를 부른다
 # (docs/kiosk.md). 로직은 저장소에 두고 autostart 에는 한 줄만 둔다.
 #
-#   끄기      touch ~/.config/trueeta/kiosk.disabled   (다음 재시작부터 안 뜬다)
+#   잠깐 나가기  Ctrl+Alt+K  (한 번 더 누르면 복귀. 재부팅하면 다시 키오스크)
+#   영구 끄기    touch ~/.config/trueeta/kiosk.disabled
 #   다른 화면 TRUEETA_KIOSK_URL=http://localhost:8099/?preset=출근-신분당
 #
 # 하는 일:
@@ -20,6 +21,10 @@ URL="${TRUEETA_KIOSK_URL:-http://localhost:${PORT}/}"
 HEALTH="http://localhost:${PORT}/api/health"
 PROFILE="${XDG_CACHE_HOME:-$HOME/.cache}/trueeta-kiosk"
 DISABLE="$HOME/.config/trueeta/kiosk.disabled"
+# 잠깐 나가기 표시. 메모리(/run/user)에 둬서 재부팅하면 저절로 지워진다 —
+# 전원만 다시 꽂으면 전광판으로 돌아와야 한다 (scripts/kiosk-toggle.sh)
+PAUSE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/trueeta-kiosk.paused"
+LOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/trueeta-kiosk.lock"
 LOG="$ROOT/var/logs/kiosk.log"
 WAIT_SEC=180
 
@@ -56,6 +61,14 @@ path.write_text(json.dumps(prefs), encoding="utf-8")
 PY
 }
 
+# 한 번에 하나만. 나갔다가 5초 안에 다시 들어오면 이전 루프가 아직 살아 있어
+# 두 루프가 같은 프로필로 Chromium 을 띄우려 든다.
+exec 9>"$LOCK"
+if ! flock -n 9; then
+    log "이미 실행 중인 키오스크가 있다 — 그쪽에 맡긴다"
+    exit 0
+fi
+
 if [ -e "$DISABLE" ]; then
     log "비활성화 파일이 있어 키오스크를 띄우지 않는다: $DISABLE"
     exit 0
@@ -86,7 +99,7 @@ done
 # --check-for-update-interval  업데이트 알림을 사실상 끈다
 # 출력은 버린다. Chromium 은 GPU 경고 등을 끝없이 쏟아내고, 이 로그는 교체되지
 # 않는 파일이라 커지면 SD 카드를 채운다. 여기에는 기동·종료만 남긴다.
-while [ ! -e "$DISABLE" ]; do
+while [ ! -e "$DISABLE" ] && [ ! -e "$PAUSE" ]; do
     seed_prefs
     log "chromium 시작: $URL"
     chromium \
@@ -102,8 +115,17 @@ while [ ! -e "$DISABLE" ]; do
         --disable-features=Translate,TranslateUI \
         --check-for-update-interval=31536000 \
         --password-store=basic \
-        "$URL" > /dev/null 2>&1
-    log "chromium 종료 (코드 $?) — 5초 뒤 다시 띄운다"
+        "$URL" > /dev/null 2>&1 9>&-
+        # 9>&- : 잠금 파일 핸들을 Chromium 에 물려주지 않는다. 물려주면 루프를 꺼도
+        # Chromium 이 살아 있는 한 잠금이 안 풀려, 새 루프가 "이미 실행 중" 이라며
+        # 물러나 버린다 (실제로 겪음)
+    log "chromium 종료 (코드 $?)"
+    [ -e "$PAUSE" ] && break
+    log "5초 뒤 다시 띄운다"
     sleep 5
 done
-log "비활성화 파일이 생겨 멈춘다"
+if [ -e "$PAUSE" ]; then
+    log "잠깐 나가기 (Ctrl+Alt+K) — 다시 누르거나 재부팅하면 돌아온다"
+else
+    log "비활성화 파일이 있어 멈춘다"
+fi

@@ -39,7 +39,7 @@ sudo apt install fonts-noto-cjk      # 한글 폰트. 없으면 화면 글자가
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 cp .env.example .env                 # SERVICE_KEY 에 공공데이터포털 '디코딩' 키
-.venv/bin/pytest                     # 182개, 네트워크·쿼터 0. 실제 var/ 는 건드리지 않는다
+.venv/bin/pytest                     # 189개, 네트워크·쿼터 0. 실제 var/ 는 건드리지 않는다
 ```
 
 서비스키는 **디코딩** 키를 넣는다. 인코딩 키를 넣으면 이중 인코딩으로 인증에 실패한다.
@@ -262,8 +262,12 @@ $P scripts/probe.py station-list --keyword "도담마을아이파크"
 → [scripts/kiosk.sh](scripts/kiosk.sh) 가 서버를 기다렸다가 Chromium 을 키오스크로 띄우고,
 꺼지면 5초 뒤 다시 띄운다.
 
+**나가려면 `Ctrl+Alt+K`** (한 번 더 누르면 돌아온다. 재부팅하면 다시 키오스크).
+`Alt+F4` 로 닫으면 5초 뒤 다시 뜬다.
+
 ```bash
-touch ~/.config/trueeta/kiosk.disabled     # 끄기
+scripts/kiosk-toggle.sh                    # Ctrl+Alt+K 와 같다 (SSH 에서)
+touch ~/.config/trueeta/kiosk.disabled     # 영구 끄기
 tail var/logs/kiosk.log                    # 기동·종료 기록
 ```
 
@@ -345,7 +349,7 @@ src/trueeta/
 scripts/probe.py         프로브 CLI
 scripts/kiosk.sh         키오스크 (labwc autostart 에서 실행)
 scripts/analyze.py       관측 로그 분석 (임계값 후보 제안)
-tests/                   182개 · fixtures 에 실응답 보관
+tests/                   189개 · fixtures 에 실응답 보관
 ```
 
 폴러와 웹서버는 **한 프로세스**다. 많아야 2분에 2콜 규모라 나눌 이유가 없고,

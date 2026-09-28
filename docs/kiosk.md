@@ -6,6 +6,28 @@
 
 *실제 HDMI 출력을 `grim` 으로 캡처한 것. 새벽이라 전부 운행종료다.*
 
+## 나가는 법
+
+**`Ctrl+Alt+K`** — 키오스크를 잠깐 끄고 바탕화면으로. **한 번 더 누르면 돌아온다.**
+
+![나가기 / 돌아가기](screenshots/kiosk-toggle.png)
+
+*왼쪽: 나간 뒤 바탕화면. 오른쪽: 다시 누른 뒤 전광판.*
+
+| | 방법 | 재부팅하면 |
+|---|---|---|
+| **잠깐 나가기** | `Ctrl+Alt+K` | **다시 키오스크로** — 전원만 꽂으면 전광판 |
+| 영구 끄기 | `touch ~/.config/trueeta/kiosk.disabled` | 계속 꺼져 있다 |
+
+`Alt+F4` 로 Chromium 을 닫으면 **5초 뒤 다시 뜬다** (재시작 루프). 나가려면
+`Ctrl+Alt+K` 를 써야 한다. 키보드가 없으면 SSH 에서 같은 스크립트를 부르면 된다.
+
+```bash
+/home/hun/TrueETA/scripts/kiosk-toggle.sh      # Ctrl+Alt+K 와 같다
+```
+
+나간 상태에서 터미널은 `Ctrl+Alt+T` (시스템 기본 단축키).
+
 ---
 
 ## 구성
@@ -26,6 +48,8 @@
 |---|---|
 | [scripts/kiosk.sh](../scripts/kiosk.sh) | 키오스크 로직 전부 |
 | [scripts/labwc-autostart](../scripts/labwc-autostart) | `~/.config/labwc/autostart` 의 저장소 사본 |
+| [scripts/kiosk-toggle.sh](../scripts/kiosk-toggle.sh) | 잠깐 나가기 / 돌아가기 |
+| [scripts/labwc-rc.xml](../scripts/labwc-rc.xml) | `~/.config/labwc/rc.xml` 사본 — `Ctrl+Alt+K` 단축키 |
 | `~/.cache/trueeta-kiosk/` | 키오스크 전용 Chromium 프로필. 평소 쓰는 브라우저와 섞이지 않는다 |
 | `var/logs/kiosk.log` | Chromium 기동·종료 기록만 |
 
@@ -34,9 +58,9 @@
 ### 조작
 
 ```bash
-touch ~/.config/trueeta/kiosk.disabled     # 끄기 (루프가 멈추고, 다음 부팅부터 안 뜬다)
+scripts/kiosk-toggle.sh                    # 잠깐 나가기 / 돌아가기 (= Ctrl+Alt+K)
+touch ~/.config/trueeta/kiosk.disabled     # 영구 끄기 (다음 부팅부터 안 뜬다)
 rm ~/.config/trueeta/kiosk.disabled        # 다시 켜기 (다음 로그인부터)
-pkill -f "chromium.*trueeta-kiosk"         # 새로고침 대신 재시작 — 5초 뒤 다시 뜬다
 tail var/logs/kiosk.log                    # 언제 떴고 언제 죽었나
 ```
 
@@ -125,10 +149,52 @@ Chromium 을 강제로 꺼봤다 (`pkill`). 5초 뒤 다시 떴다.
 
 ---
 
+### 4. (나가기 구현 중) 토글이 엉뚱한 셸을 죽였다
+
+**원인.** 처음엔 `pkill -f "chromium.*trueeta-kiosk"` 로 Chromium 을 찾았다.
+`-f` 는 명령줄 전체에서 찾으므로, **그 두 단어가 명령줄에 들어간 다른 프로세스**
+(테스트하던 셸)까지 죽였다. 두 번 겪었다.
+
+**행동.** 프로세스 **이름이 정확히 `chromium`** 이고(`pgrep -x`), 키오스크 프로필
+(`--user-data-dir=...trueeta-kiosk`)을 쓰는 **메인 프로세스만**(`--type=` 없는 것)
+끈다. 자식 프로세스는 메인이 죽으면 따라 죽는다. 평소 쓰는 Chromium 도 건드리지 않는다.
+
+**결과.** 이후 테스트에서 엉뚱한 프로세스가 죽지 않았다.
+
+### 5. (나가기 구현 중) 나갔다 들어오면 상태가 뒤집혔다
+
+**원인.** 나갔다가 5초 안에 다시 들어오면 이전 루프가 아직 살아 있어 루프 두 개가
+같은 프로필로 Chromium 을 띄우려 든다. 그래서 `flock` 잠금으로 루프를 하나로 제한했다.
+그런데 루프가 잠금을 연 채 Chromium 을 띄우면서 **Chromium 과 자식들이 잠금 파일
+핸들을 물려받았다.** 루프를 꺼도 Chromium 이 살아 있는 한 잠금이 풀리지 않아, 새
+루프가 "이미 실행 중" 이라며 물러났다. 그 뒤로 나가기·돌아가기가 반대로 동작했다.
+
+```
+01:41:56 chromium 시작
+01:42:00 이미 실행 중인 키오스크가 있다 — 그쪽에 맡긴다   ← 새 루프가 양보해 버림
+```
+
+**행동.** Chromium 을 띄울 때 잠금 핸들을 닫고 넘긴다 (`9>&-`).
+
+**결과.** 네 단계를 실제 화면으로 확인했다.
+
+| 단계 | Chromium | 루프 |
+|---|---|---|
+| 시작 | 떠 있음 | 1 |
+| 나가기 | 꺼짐 | 0 |
+| 돌아가기 | 떠 있음 | 1 |
+| 2초 만에 나갔다 들어오기 | 떠 있음 | **1** (중복 없음) |
+
+---
+
 ## 확인 못 한 것
 
-- **재부팅 후 autostart 로 실제로 뜨는지.** 지금 떠 있는 키오스크는 SSH 에서 띄운
-  것이다. autostart 는 로그인할 때 실행되므로 재부팅해야 확인된다
+- ~~재부팅 후 autostart 로 실제로 뜨는지~~ — **확인됨** (재부팅만 하면 뜬다)
+- **`Ctrl+Alt+K` 를 실제 키보드로 누르는 것.** 단축키가 부르는 스크립트는 화면으로
+  검증했지만, 키 입력 자체는 SSH 에서 보낼 수 없어 못 해봤다
+- **`Ctrl+Alt+T` 등 기존 단축키가 그대로인지.** 사용자 `rc.xml` 을 새로 만들었다.
+  labwc 가 `-m` 이라 시스템 설정에 더해지는 게 맞지만 직접 눌러보진 못했다.
+  문제가 있으면 `rm ~/.config/labwc/rc.xml && labwc --reconfigure` 로 되돌린다
 - **전원을 그냥 뽑았을 때** 복원 창이 정말 안 뜨는지
 - **마우스 커서.** 화면 가운데에 커서가 남을 수 있다. 마우스를 안 꽂으면 문제없다
 
