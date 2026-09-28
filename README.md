@@ -18,7 +18,7 @@
 - 운영계정 신청 자료: [docs/data-portal-submission.md](docs/data-portal-submission.md)
 - 사고 기록: [docs/incident-2026-09-24.md](docs/incident-2026-09-24.md) (관측 로그 이틀 유실)
 - 로그 위치: [docs/logging.md](docs/logging.md)
-- 키오스크 자동실행: [docs/kiosk.md](docs/kiosk.md)
+- 키오스크 화면 (읽는 법·조작·문제 해결): [docs/kiosk.md](docs/kiosk.md)
 
 ## 현재 단계
 
@@ -76,6 +76,8 @@ TRUEETA_RELOAD=1 TRUEETA_PORT=8098 .venv/bin/python -m trueeta
 
 ## 화면 읽는 법
 
+> 영역별 설명·갱신 상태 색·문제 해결까지 담은 전체 안내는 **[docs/kiosk.md](docs/kiosk.md)**.
+
 ```
 노선    정류장                    첫 번째      두 번째
 22     도담마을아이파크          4분          17분
@@ -91,9 +93,14 @@ TRUEETA_RELOAD=1 TRUEETA_PORT=8098 .venv/bin/python -m trueeta
 | `회차대기` 테두리만 | 위치로 추정한 회차대기 (API 가 신호를 안 줬을 때) |
 | 숫자가 **회색** + `회차지 · 더 걸릴 수 있음` | 차가 기점·회차점에 있다. 확정은 아니지만 ETA 를 믿기 어렵다 |
 | `운행종료` | 막차 후 |
-| `—` | 노선은 도는데 지금 오는 차가 없음 |
+| `—` | 노선은 도는데 목록에 차가 없음 — **사실상 "다음 차가 아직 회차지를 안 떠났다"** |
 
-오른쪽 위에 마지막 갱신 시각이 뜬다. 15분 넘게 안 바뀌면 주황색으로 변한다.
+**`—` 를 눈여겨볼 것.** GBIS 는 회차지를 출발한 차만 보여줘서, 회차지에 서 있는 차는
+목록에 아예 없다. 위 표의 `회차대기` 배지·`회차지` 경고는 이 정류장들에선 거의 안 나온다.
+"회차지 대기 · 최소 N분" 으로 보여주는 B안은 판정만 돌고 있다 ([docs/judge-absence-design.md](docs/judge-absence-design.md)).
+
+오른쪽 위에 마지막 갱신 시각이 뜬다. 15분 넘게 안 바뀌면 주황색으로 변한다 (새벽엔 정상).
+빨간 글씨는 조회 실패나 설정 오류다.
 
 **남은 시간은 화면에서 1초씩 깎인다.** 서버가 길게는 10분에 한 번만 조회하므로,
 조회 시각을 기준으로 보간하지 않으면 화면이 멈춰 보인다.
