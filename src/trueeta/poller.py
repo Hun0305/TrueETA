@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 import httpx
@@ -27,10 +27,11 @@ from trueeta.gbis.envelope import as_list, find_key
 from trueeta.gbis.parser import parse_arrivals
 from trueeta.judge import judge_arrival
 from trueeta.judge_absence import (
-    MISSING, RouteSnapshot, default_min_travel, judge_absence,
+    MISSING, OFF, UNSEEN, BVerdict, RouteSnapshot, default_min_travel, judge_absence,
 )
 from trueeta.models import Board, BoardEntry, Status
 from trueeta.presets import PresetStore
+from trueeta.quota import QuotaCounter
 from trueeta.routeinfo import RouteInfoCache
 from trueeta.state import BoardState
 from trueeta.storage import Observation, ObservationLog, RouteCycle
@@ -64,6 +65,31 @@ class RouteState:
     second_status: Status | None
     estimated_wait: bool
     at_standing: bool
+    wait_min_sec: int | None = None
+    wait_expected_sec: int | None = None
+    wait_overdue: bool = False
+
+
+def with_absence(judged: RouteState, verdict: BVerdict | None) -> RouteState:
+    """A안이 '차 없음' 이라고 한 줄에만 B안을 덧씌운다.
+
+    A안의 '차 없음' 은 사실상 회차지 대기다 — GBIS 는 회차지를 떠난 차만
+    보여준다. B안은 그걸 '최소 N분 · 보통 M분' 으로 읽는다. 차가 보이거나
+    API 가 flag=WAIT 로 확정해 준 경우는 A안이 더 정확하므로 건드리지 않는다.
+    """
+    if verdict is None or judged.status != Status.NO_BUS:
+        return judged
+    if verdict.status == UNSEEN:
+        return replace(
+            judged,
+            wait_min_sec=verdict.min_sec,
+            wait_expected_sec=verdict.expected_sec,
+            wait_overdue=verdict.overdue,
+        )
+    if verdict.status == OFF:
+        # 노선별 막차(+N+10분 여유)가 지났다. 전체 운행창(00:10)보다 이르다
+        return replace(judged, status=Status.ENDED)
+    return judged
 
 
 def wanted_routes(presets: list[Preset]) -> dict[str, set[str]]:
@@ -99,8 +125,9 @@ def record_cycle(
     a_status: str,
     state: BoardState,
     bctx: BContext,
-) -> None:
-    """(정류장, 노선) 한 줄을 B안으로 판정해 남긴다. 차가 없어도 남긴다.
+) -> BVerdict:
+    """(정류장, 노선) 한 줄을 B안으로 판정해 남기고, 판정을 돌려준다.
+    차가 없어도 남긴다.
 
     arrival 이 None 이면 응답에 그 노선 자체가 없었던 것이다.
     """
@@ -170,6 +197,7 @@ def record_cycle(
             b_overdue=verdict.overdue,
         )
     )
+    return verdict
 
 
 def judge_station(
@@ -203,7 +231,7 @@ def judge_station(
             stalled=state.stalls.counts_for(station_id, arrival.route_id),
             stall_seconds=stall_seconds,
         )
-        judged[(station_id, arrival.route_name)] = RouteState(
+        route_state = RouteState(
             dest_name=arrival.dest_name,
             status=first.status,
             eta_sec=first.eta_sec,
@@ -213,8 +241,10 @@ def judge_station(
             at_standing=first.at_standing,
         )
         if bctx is not None:
-            record_cycle(station_id, arrival.route_name, arrival,
-                         first.status.value, state, bctx)
+            verdict = record_cycle(station_id, arrival.route_name, arrival,
+                                   first.status.value, state, bctx)
+            route_state = with_absence(route_state, verdict)
+        judged[(station_id, arrival.route_name)] = route_state
 
         for slot, (vehicle, verdict) in enumerate(
             zip(arrival.vehicles, (first, second)), start=1
@@ -324,6 +354,9 @@ def board_for_preset(
                     second_status=found.second_status if found else None,
                     estimated_wait=found.estimated_wait if found else False,
                     at_standing=found.at_standing if found else False,
+                    wait_min_sec=found.wait_min_sec if found else None,
+                    wait_expected_sec=found.wait_expected_sec if found else None,
+                    wait_overdue=found.wait_overdue if found else False,
                 )
             )
 
@@ -458,6 +491,9 @@ async def run_poller(
     peak_end = parse_hhmm(config.peak_end)
     sleeping = False
     stations = len(config.default_preset.stops)
+    # 임시 주기가 남은 호출로 감당되는지 보려고 센다. 세는 건 client 가 한다
+    quota = QuotaCounter(settings.quota_path, limit=config.daily_budget)
+    boosting = False
 
     while True:
         now = datetime.now().time()
@@ -494,5 +530,21 @@ async def run_poller(
             state.set_error(str(exc))
 
         peak_sec, far_sec = config.intervals_for(stations)
-        peak = in_window(now, peak_start, peak_end)
-        await asyncio.sleep(peak_sec if peak else far_sec)
+        interval = peak_sec if in_window(now, peak_start, peak_end) else far_sec
+
+        boost = config.boost_interval(
+            datetime.now(), stations, quota.today("arrivals")
+        )
+        if boost is not None and boost < interval:
+            if not boosting:
+                log.info(
+                    "임시 주기 %d초 (%s 까지, 평소 %d초)",
+                    boost, config.boost_until.isoformat(timespec="minutes"), interval,
+                )
+                boosting = True
+            interval = boost
+        elif boosting:
+            log.info("임시 주기 끝 — 평소 주기 %d초로", interval)
+            boosting = False
+
+        await asyncio.sleep(interval)

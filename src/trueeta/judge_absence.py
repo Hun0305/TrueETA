@@ -13,7 +13,8 @@ A안(judge.py)은 회차점·기점 **위치에 서 있는 차**를 찾는다. �
 
     M = max(N,  H − 차가 안 보인 지 경과한 시간)
 
-A안과 나란히 돌며 둘 다 route_cycles 에 기록된다. 화면은 아직 A안이다.
+A안과 나란히 돌며 둘 다 route_cycles 에 기록된다. 화면에는 A안이 '차 없음' 이라
+한 칸에만 B안이 덧씌워진다 (poller.with_absence).
 자세히는 docs/judge-absence-design.md.
 """
 

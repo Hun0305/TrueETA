@@ -11,8 +11,10 @@ config.yaml 에 staOrder·turnSeq·첫차/막차를 두지 않는 것은 의도�
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -117,6 +119,9 @@ class BoardConfig:
     stall_seconds: float = 240.0
     log_observations: bool = True
     daily_budget: int = 1000
+    #: 임시 주기. boost_until 전까지는 피크·그 외 구분 없이 이 주기로 조회한다
+    boost_interval_sec: int = 0
+    boost_until: datetime | None = None
 
     @property
     def default_preset(self) -> Preset:
@@ -183,6 +188,50 @@ class BoardConfig:
             max(1, round(self.interval_peak_sec * scale)),
             max(1, round(self.interval_far_sec * scale)),
         )
+
+
+    def boost_interval(
+        self, now: datetime, stations: int, used_today: int
+    ) -> int | None:
+        """임시 주기. 꺼져 있거나 끝났거나 오늘 남은 호출이 없으면 None.
+
+        intervals_for 는 하루 전체를 놓고 역산하므로 "오늘 저녁만 1분" 을
+        표현하지 못한다. 그렇다고 한도 검사를 건너뛸 수는 없다 — 넘기면
+        GBIS 가 거절해 그날 남은 시간 내내 화면이 에러다. 그래서 **오늘 실제로
+        쓴 건수**에서 남은 몫을 구하고, 그 몫으로 끝까지 버틸 수 있는 주기보다
+        짧게는 가지 않는다.
+        """
+        if not self.boost_interval_sec or self.boost_until is None:
+            return None
+        if now >= self.boost_until:
+            return None
+        stations = max(1, stations)
+        left = self.daily_budget - BOOST_RESERVE - used_today
+        cycles = left // stations
+        if cycles <= 0:
+            return None
+        # 쿼터는 자정에 날짜가 넘어간다. 오늘 몫으로 버틸 구간은 자정과
+        # 임시 주기 끝 중 이른 쪽까지다
+        midnight = datetime.combine(now.date() + timedelta(days=1), time())
+        horizon = (min(self.boost_until, midnight) - now).total_seconds()
+        return max(self.boost_interval_sec, math.ceil(horizon / cycles))
+
+
+#: 임시 주기가 남겨두는 호출. 손으로 probe 를 돌리거나 재시작할 몫이다
+BOOST_RESERVE = 50
+
+
+def _parse_until(value: Any) -> datetime | None:
+    """`boost.until` — YAML 이 datetime 으로 읽기도, 문자열로 읽기도 한다.
+
+    시간대가 붙어 있으면 로컬 시각으로 바꾼다. 폴러는 로컬 naive 시각으로 비교한다.
+    """
+    if value in (None, ""):
+        return None
+    when = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    if when.tzinfo is not None:
+        when = when.astimezone().replace(tzinfo=None)
+    return when
 
 
 def load_settings(*, require_key: bool = True) -> Settings:
@@ -273,6 +322,7 @@ def load_board_config(path: Path | None = None) -> BoardConfig:
     window = polling.get("service_window") or {}
     peak = polling.get("peak_window") or {}
     interval = polling.get("interval_sec") or {}
+    boost = polling.get("boost") or {}
     judge = raw.get("judge") or {}
 
     return BoardConfig(
@@ -292,4 +342,6 @@ def load_board_config(path: Path | None = None) -> BoardConfig:
         stall_seconds=float(judge.get("stall_seconds", 240)),
         log_observations=bool(judge.get("log_observations", True)),
         daily_budget=int(polling.get("daily_budget", 1000)),
+        boost_interval_sec=int(boost.get("interval_sec", 0) or 0),
+        boost_until=_parse_until(boost.get("until")),
     )

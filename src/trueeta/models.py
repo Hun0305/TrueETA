@@ -83,6 +83,11 @@ class BoardEntry:
     # 차가 기점/회차점에 있다. 회차대기로 확정되지 않았어도 ETA 를 믿기 어려우므로
     # 화면이 숫자를 흐리게 하고 '회차지' 표식을 단다.
     at_standing: bool = False
+    # B안(judge_absence.py): 운행 중인데 차가 안 보임 = 회차지 대기.
+    # GBIS 는 회차지를 떠난 차만 보여주므로 차 없음이 곧 회차지 대기다.
+    wait_min_sec: int | None = None  # 최소 N — 회차지를 떠나 여기까지 오는 시간
+    wait_expected_sec: int | None = None  # 보통 M — 배차간격으로 추정. 모르면 None
+    wait_overdue: bool = False  # 배차간격을 넘겼는데도 안 옴
 
     def as_dict(self) -> dict:
         return {
@@ -96,6 +101,9 @@ class BoardEntry:
             "second_status": self.second_status.value if self.second_status else None,
             "estimated_wait": self.estimated_wait,
             "at_standing": self.at_standing,
+            "wait_min_sec": self.wait_min_sec,
+            "wait_expected_sec": self.wait_expected_sec,
+            "wait_overdue": self.wait_overdue,
         }
 
 

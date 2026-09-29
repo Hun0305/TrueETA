@@ -82,7 +82,7 @@ flowchart LR
 | 화면 | 전광판 `/`, 프리셋 편집 `/edit`. 빌드 없는 HTML | [web/](../src/trueeta/web/) |
 | 원격 | Cloudflare Tunnel ([remote-access.md](remote-access.md)) | |
 | 키오스크 | labwc autostart → Chromium `--kiosk`, 꺼지면 재시작 | [scripts/kiosk.sh](../scripts/kiosk.sh) · [kiosk.md](kiosk.md) |
-| 아직 | 적응형 주기, 야간 화면 off, 화면에 B안 반영 | |
+| 아직 | 적응형 주기, 야간 화면 off | |
 
 > **노선 정보 캐시는 구현하지 않았다.** 첫차·막차를 하루 1회 받아 캐시하기로
 > 했으나 `config.yaml` 의 `service_window` 에 손으로 적어둔 상태다.

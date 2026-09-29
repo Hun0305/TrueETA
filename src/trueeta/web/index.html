@@ -211,6 +211,11 @@ const DEMO_BOARD = {
     { route_name: "59", stop_name: "정류장 A", dest_name: "수지구청",
       status: "running", eta_sec: 410, at_standing: true, estimated_wait: false,
       second_status: "running", second_eta_sec: 1260 },
+    // B안 — 차가 안 보임 = 회차지 대기. 최소 N분 · 보통 M분
+    { route_name: "25", stop_name: "정류장 B", dest_name: "미금역",
+      status: "no_bus", eta_sec: null, at_standing: false, estimated_wait: false,
+      second_status: null, second_eta_sec: null,
+      wait_min_sec: 180, wait_expected_sec: 720, wait_overdue: false },
   ],
 };
 
@@ -227,6 +232,28 @@ function remainingSec(etaSec) {
   if (etaSec === null || etaSec === undefined) return null;
   const elapsed = (Date.now() - polledAtMs) / 1000;
   return etaSec - elapsed;
+}
+
+/* B안 — 운행 중인데 차가 안 보임 = 회차지 대기 (judge_absence.py).
+   GBIS 는 회차지를 떠난 차만 보여준다. 그래서 '—' 대신 이걸 띄운다.
+
+     최소 N  회차지를 떠나 여기까지 오는 시간. 차가 안 보이는 동안은 줄지 않는다
+     보통 M  배차간격으로 추정. 시간이 흐르면 줄되 N 밑으로는 안 내려간다
+
+   추정이라 배지는 테두리만 쓴다 (API 가 확정한 flag=WAIT 회차대기는 채운 배지). */
+function waitCell(e) {
+  const min = Math.max(1, Math.ceil(e.wait_min_sec / 60));
+  let note = "최소 " + min + "분";
+  if (e.wait_overdue) {
+    note += " · 배차 넘김";
+  } else if (e.wait_expected_sec !== null && e.wait_expected_sec !== undefined) {
+    const elapsed = (Date.now() - polledAtMs) / 1000;
+    const expect = Math.max(e.wait_min_sec, e.wait_expected_sec - elapsed);
+    const expectMin = Math.ceil(expect / 60);
+    if (expectMin > min) note += " · 보통 " + expectMin + "분 안";
+  }
+  return '<span class="badge guess">회차지 대기</span>'
+       + '<span class="warn">' + note + "</span>";
 }
 
 function etaCell(etaSec, status, estimated, isFirst, atStanding) {
@@ -267,7 +294,10 @@ function render() {
       +   (e.dest_name ? '<span class="dest">' + e.dest_name + " 방면</span>" : "")
       + "</div>"
       + '<div class="first' + (e.at_standing ? " standing" : "") + '">'
-      +   etaCell(e.eta_sec, e.status, e.estimated_wait, true, e.at_standing) + "</div>"
+      +   (e.wait_min_sec !== null && e.wait_min_sec !== undefined
+             ? waitCell(e)
+             : etaCell(e.eta_sec, e.status, e.estimated_wait, true, e.at_standing))
+      + "</div>"
       + '<div class="second">'
       +   etaCell(e.second_eta_sec, e.second_status, false, false, false) + "</div>"
       + "</div>";
