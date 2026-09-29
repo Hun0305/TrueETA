@@ -71,10 +71,12 @@ flowchart LR
 |---|---|---|
 | OS / 세션 | Raspberry Pi OS (Debian 13 Trixie), labwc (Wayland) | |
 | 백엔드 | `trueeta.service` (systemd) · Python FastAPI, 포트 8099 | [api.py](../src/trueeta/api.py) |
-| 폴러 | 시간대별 주기(08~18시 120초 / 그 외 600초), 운행시간 밖 중지 | [poller.py](../src/trueeta/poller.py) |
+| 폴러 | 시간대별 주기(08~18시 120초 / 그 외 600초), 운행시간 밖 중지. 임시 주기(`polling.boost`)는 오늘 남은 호출로 감당될 때만 | [poller.py](../src/trueeta/poller.py) |
 | 파서 | 실응답의 빈 문자열·키 부재·타입 혼재 흡수 | [gbis/parser.py](../src/trueeta/gbis/parser.py) |
-| 회차대기 판정 | `flag=WAIT` · 위치(기점/회차점) · ETA 감소율 — 순수 함수 | [judge.py](../src/trueeta/judge.py) |
-| 관측 로그 | 매 사이클 기록, 임계값 튜닝 근거 (`var/observations.db`) | [storage.py](../src/trueeta/storage.py) |
+| 회차대기 판정 A안 | `flag=WAIT` · 위치(기점/회차점) · ETA 감소율. 위치 규칙은 실측에서 발동 0회 | [judge.py](../src/trueeta/judge.py) |
+| 회차대기 판정 B안 | 운행 중 "차 없음" = 회차지 대기. 화면에 `최소 N분` (A안이 `no_bus` 인 칸만). N·배차간격은 로그에서 학습 | [judge_absence.py](../src/trueeta/judge_absence.py) · [judge-absence-design.md](judge-absence-design.md) |
+| 노선 정보 | 첫차·막차·배차간격, 하루 1회 캐시 (`var/routeinfo.json`) | [routeinfo.py](../src/trueeta/routeinfo.py) |
+| 관측 로그 | 차량별(`observations`) + 사이클·노선별 A·B 판정(`route_cycles`). N·배차 보정 학습과 `analyze.py --compare` 의 근거 | [storage.py](../src/trueeta/storage.py) |
 | 프리셋 | 정류장·노선 묶음. 보고 있는 것만 폴링 (`var/presets.db`) | [presets.py](../src/trueeta/presets.py) |
 | 정류장 검색 | 이름·좌표 검색과 경유 노선. 30분 캐시 | [search.py](../src/trueeta/search.py) |
 | 웹서버 | `/api/board?preset=` · `/api/presets` · `/api/search/*` · 화면 제공 | [api.py](../src/trueeta/api.py) |
@@ -82,11 +84,11 @@ flowchart LR
 | 화면 | 전광판 `/`, 프리셋 편집 `/edit`. 빌드 없는 HTML | [web/](../src/trueeta/web/) |
 | 원격 | Cloudflare Tunnel ([remote-access.md](remote-access.md)) | |
 | 키오스크 | labwc autostart → Chromium `--kiosk`, 꺼지면 재시작 | [scripts/kiosk.sh](../scripts/kiosk.sh) · [kiosk.md](kiosk.md) |
-| 아직 | 적응형 주기, 야간 화면 off | |
+| 아직 | 적응형 주기, 야간 화면 off, 서버 재시작 시 키오스크 자동 새로고침 | |
 
-> **노선 정보 캐시는 구현하지 않았다.** 첫차·막차를 하루 1회 받아 캐시하기로
-> 했으나 `config.yaml` 의 `service_window` 에 손으로 적어둔 상태다.
-> 그래서 `버스노선 조회` API 는 런타임에서 호출하지 않는다.
+> **노선 정보는 하루 1회 캐시한다** (2026-09-28 구현). `config.yaml` 의
+> `service_window`(05:50~00:10)는 바깥 울타리이고, 노선별 첫차·막차·배차간격은
+> `버스노선 조회` API 에서 온다. 호출은 노선당 하루 1건이다.
 
 ```mermaid
 flowchart LR
@@ -102,21 +104,23 @@ flowchart LR
             PRESET[("프리셋 DB<br/>presets.db")]
             POLL["폴러<br/>보고 있는 프리셋만<br/>주기 = 정류장 수에서 역산"]
             PARSE["파서<br/>빈문자열 · 키부재 · 타입혼재"]
-            JUDGE{{"회차대기 판정<br/>flag · 위치 · ETA 감소율"}}
+            JUDGE{{"회차대기 판정<br/>A안 flag · 위치 · 감소율<br/>B안 차 없음 → 최소 N분"}}
+            RINFO["노선 정보<br/>첫차·막차·배차 · 하루 1회"]
             SEARCH["정류장 검색<br/>30분 캐시"]
             WEB["웹서버<br/>/api/board · /api/presets · /api/search"]
             OBS[("관측 로그<br/>observations.db")]
         end
-        subgraph SES["labwc 세션 · Wayland (아직)"]
-            SCHED["화면 스케줄<br/>wlr-randr"]
-            KIOSK["Chromium 키오스크<br/>15초 갱신 · 1초 카운트다운"]
+        subgraph SES["labwc 세션 · Wayland"]
+            SCHED["화면 스케줄<br/>wlr-randr (아직)"]
+            KIOSK["Chromium 키오스크<br/>autostart · 15초 갱신 · 1초 카운트다운"]
         end
     end
 
     PHONE["폰 · 노트북<br/>Cloudflare Tunnel"]
     LCD["8인치 LCD<br/>1024×768"]
 
-    A_ROUTE -.->|프로브 전용| PARSE
+    A_ROUTE -->|하루 1회| RINFO
+    RINFO -->|운행시간 · 배차간격| JUDGE
     A_ARR -->|주기 조회| POLL
     A_STA -->|편집할 때만| SEARCH
     CFG -->|씨앗| PRESET
@@ -125,6 +129,7 @@ flowchart LR
     PARSE -->|도메인 객체| JUDGE
     JUDGE -->|상태 + ETA| WEB
     JUDGE -->|매 사이클 기록| OBS
+    OBS -.->|N · 배차 보정 학습| JUDGE
     SEARCH -->|정류장 · 방면| WEB
     WEB -->|프리셋 저장| PRESET
     WEB -->|JSON| KIOSK
