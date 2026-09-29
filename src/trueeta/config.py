@@ -122,6 +122,9 @@ class BoardConfig:
     #: 임시 주기. boost_until 전까지는 피크·그 외 구분 없이 이 주기로 조회한다
     boost_interval_sec: int = 0
     boost_until: datetime | None = None
+    #: B안 '보통 M분' 을 화면에 보여줄 노선. 검증(analyze --compare)을 통과한
+    #: 노선만 넣는다. 비어 있으면 모든 노선이 '최소 N분' 만 보인다
+    show_expected: frozenset[str] = frozenset()
 
     @property
     def default_preset(self) -> Preset:
@@ -344,4 +347,5 @@ def load_board_config(path: Path | None = None) -> BoardConfig:
         daily_budget=int(polling.get("daily_budget", 1000)),
         boost_interval_sec=int(boost.get("interval_sec", 0) or 0),
         boost_until=_parse_until(boost.get("until")),
+        show_expected=frozenset(route_key(r) for r in judge.get("show_expected") or []),
     )

@@ -70,12 +70,18 @@ class RouteState:
     wait_overdue: bool = False
 
 
-def with_absence(judged: RouteState, verdict: BVerdict | None) -> RouteState:
+def with_absence(
+    judged: RouteState, verdict: BVerdict | None, show_expected: bool = True
+) -> RouteState:
     """A안이 '차 없음' 이라고 한 줄에만 B안을 덧씌운다.
 
     A안의 '차 없음' 은 사실상 회차지 대기다 — GBIS 는 회차지를 떠난 차만
     보여준다. B안은 그걸 '최소 N분 · 보통 M분' 으로 읽는다. 차가 보이거나
     API 가 flag=WAIT 로 확정해 준 경우는 A안이 더 정확하므로 건드리지 않는다.
+
+    show_expected=False 면 '보통 M분' 과 '배차 넘김' 을 뺀다. 둘 다 배차간격에
+    기대는 추정이라, 검증을 통과한 노선만 보여준다 (config judge.show_expected).
+    '최소 N분' 은 실측으로 검증됐으므로 항상 보여준다.
     """
     if verdict is None or judged.status != Status.NO_BUS:
         return judged
@@ -83,8 +89,8 @@ def with_absence(judged: RouteState, verdict: BVerdict | None) -> RouteState:
         return replace(
             judged,
             wait_min_sec=verdict.min_sec,
-            wait_expected_sec=verdict.expected_sec,
-            wait_overdue=verdict.overdue,
+            wait_expected_sec=verdict.expected_sec if show_expected else None,
+            wait_overdue=verdict.overdue if show_expected else False,
         )
     if verdict.status == OFF:
         # 노선별 막차(+N+10분 여유)가 지났다. 전체 운행창(00:10)보다 이르다
@@ -108,6 +114,10 @@ class BContext:
     now: datetime
     route_info: RouteInfoCache | None = None
     learned: dict[tuple[str, str], int] = field(default_factory=dict)
+    #: (정류장, 노선) -> 배차간격 보정 비율 (실측 ÷ 공칭). storage.learned_headway_ratio
+    headway_ratio: dict[tuple[str, str], float] = field(default_factory=dict)
+    #: '보통 M분' 을 화면에 보여줄 노선들. 나머지는 '최소 N분' 만
+    show_expected: frozenset[str] = frozenset()
     cycles: list[RouteCycle] = field(default_factory=list)
     #: 정류장 -> 화면에 띄울 설정 경고 (응답에 노선이 계속 없음)
     warnings: dict[str, str] = field(default_factory=dict)
@@ -163,6 +173,10 @@ def record_cycle(
         info.in_service(bctx.now, after_turn=after_turn, travel_sec=travel) if info else None
     )
     headway = info.headway_sec(bctx.now) if info else None
+    # 판정에는 실측으로 보정한 값을 쓰고, 기록에는 공칭값을 남긴다.
+    # 보정값을 기록하면 다음 학습이 그걸 또 보정해 값이 흘러간다.
+    ratio = bctx.headway_ratio.get(key)
+    effective = round(headway * ratio) if (headway and ratio) else headway
 
     verdict = judge_absence(
         RouteSnapshot(
@@ -172,7 +186,7 @@ def record_cycle(
             in_service=in_service,
             absent_for_sec=(bctx.now - since).total_seconds() if since else None,
             min_travel_sec=travel,
-            headway_sec=headway,
+            headway_sec=effective,
             listed=listed,
         )
     )
@@ -243,7 +257,9 @@ def judge_station(
         if bctx is not None:
             verdict = record_cycle(station_id, arrival.route_name, arrival,
                                    first.status.value, state, bctx)
-            route_state = with_absence(route_state, verdict)
+            route_state = with_absence(
+                route_state, verdict, arrival.route_name in bctx.show_expected
+            )
         judged[(station_id, arrival.route_name)] = route_state
 
         for slot, (vehicle, verdict) in enumerate(
@@ -417,6 +433,7 @@ def run_cycle(
     store: PresetStore | None = None,
     route_info: RouteInfoCache | None = None,
     learned: dict[tuple[str, str], int] | None = None,
+    headway_ratio: dict[tuple[str, str], float] | None = None,
 ) -> int:
     """한 사이클. 폴링한 정류장 수를 돌려준다 (다음 주기 계산용)."""
     presets = store.all() if store else config.presets
@@ -426,7 +443,11 @@ def run_cycle(
     wanted = wanted_routes(active)
 
     bctx = BContext(
-        now=datetime.now().astimezone(), route_info=route_info, learned=learned or {}
+        now=datetime.now().astimezone(),
+        route_info=route_info,
+        learned=learned or {},
+        headway_ratio=headway_ratio or {},
+        show_expected=config.show_expected,
     )
     judged, errors = fetch_and_judge(
         client, wanted, state, config.stall_seconds, log_db, bctx
@@ -473,9 +494,13 @@ async def run_poller(
     )
     state.absences.restore(log_db.open_absences())
     learned = log_db.learned_min_travel()
+    headway_ratio = log_db.learned_headway_ratio()
     learned_at = datetime.now()
     if learned:
         log.info("B안 최소시간 학습값: %s", {f"{k[1]}번": v for k, v in learned.items()})
+    if headway_ratio:
+        log.info("B안 배차 보정: %s",
+                 {f"{k[1]}번": f"×{v:.2f}" for k, v in headway_ratio.items()})
 
     # 라즈베리파이는 RTC 가 없어 부팅 직후 시계가 틀리다. 그대로 두면
     # 운행시간 판정·관측 ts·쿼터 날짜가 한꺼번에 어긋난다 (clock.py 참고).
@@ -519,9 +544,11 @@ async def run_poller(
             # httpx 동기 호출이라 이벤트 루프를 막지 않게 스레드로 뺀다
             if (datetime.now() - learned_at).total_seconds() > 3600:
                 learned = log_db.learned_min_travel()
+                headway_ratio = log_db.learned_headway_ratio()
                 learned_at = datetime.now()
             stations = await asyncio.to_thread(
-                run_cycle, client, config, state, log_db, store, route_info, learned
+                run_cycle, client, config, state, log_db, store, route_info,
+                learned, headway_ratio,
             )
         except asyncio.CancelledError:
             raise

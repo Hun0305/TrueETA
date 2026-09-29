@@ -76,6 +76,55 @@ CREATE INDEX IF NOT EXISTS idx_cyc_route ON route_cycles (station_id, route_name
 """
 
 
+#: 배차 보정 학습 — 이보다 적은 '차 없음' 구간으로는 배우지 않는다.
+#: 한 구간 안의 매 사이클 예측은 같은 사건이라 표본은 구간 수다.
+HEADWAY_MIN_SAMPLES = 5
+#: 비율이 이 밖이면 잘라낸다. 결행·재시작 같은 사고 몇 건에 휘둘리지 않게
+HEADWAY_RATIO_MIN = 0.5
+HEADWAY_RATIO_MAX = 1.5
+#: 사이클 사이가 이보다 벌어지면 (재시작·운행창 밖) 그 구간은 버린다
+_MAX_CYCLE_GAP_SEC = 15 * 60
+#: 차 없음이 이보다 길면 막차·결행으로 보고 버린다 (analyze.MAX_MATCH_SEC 와 같다)
+_MAX_EPISODE_SEC = 90 * 60
+
+
+def headway_ratios(seq: list[tuple]) -> list[float]:
+    """한 (정류장, 노선)의 사이클 열에서 '차 없음' 구간마다 실측 ÷ 공칭 비율.
+
+    seq 항목: (ts, n_vehicles, eta1_sec, absent_since, headway_sec, b_status),
+    ts 순서.
+
+    구간은 **차가 보이다가 사라진 사이클**에서 시작하는 것만 쓴다. 재시작
+    직후 복구한 구간은 시작 시각이 부정확하다. 끝은 다음에 차가 처음 보인
+    사이클이고, 실제 대기 = (그 시각 − 차 없음 시작) + 그때 1호차 ETA.
+    B안의 M = H − (지금 − 차 없음 시작) 이 맞히려는 바로 그 값이다.
+
+    분모는 **그 시각의 공칭 배차간격**(기록된 headway_sec)이다. 보정된 값을
+    기록하면 다음 학습이 보정값을 또 보정해 값이 흘러간다.
+    """
+    ratios = []
+    for i in range(1, len(seq)):
+        ts, n, _eta, since, headway, status = seq[i]
+        if not (seq[i - 1][1] > 0 and n == 0 and since and headway and status == "unseen"):
+            continue
+        start = datetime.fromisoformat(since)
+        prev_ts = datetime.fromisoformat(ts)
+        for nxt in seq[i + 1:]:
+            nxt_ts = datetime.fromisoformat(nxt[0])
+            if (nxt_ts - prev_ts).total_seconds() > _MAX_CYCLE_GAP_SEC:
+                break
+            if nxt[5] in ("off", "ended", "missing"):
+                break
+            if nxt[1] > 0:
+                if nxt[2] is not None:
+                    actual = (nxt_ts - start).total_seconds() + nxt[2]
+                    if 0 < actual <= _MAX_EPISODE_SEC:
+                        ratios.append(actual / headway)
+                break
+            prev_ts = nxt_ts
+    return ratios
+
+
 @dataclass(frozen=True)
 class Observation:
     station_id: str
@@ -241,6 +290,45 @@ class ObservationLog:
             if len(values) >= min_samples:
                 values.sort()
                 learned[key] = values[len(values) // 2]
+        return learned
+
+    def learned_headway_ratio(
+        self, *, days: int = 14, min_samples: int = HEADWAY_MIN_SAMPLES
+    ) -> dict[tuple[str, str], float]:
+        """B안의 배차간격 H 를 실측으로 보정하는 비율을 배운다.
+
+        노선 정보 API 의 배차간격은 공칭값이다. 9/29 저녁 22번은 공칭 25분인데
+        실제로는 늘 3분쯤 일찍 와서 예상 M 이 체계적으로 늦었다.
+
+        절대값이 아니라 **비율**(실측 ÷ 공칭)로 배운다. 저녁 데이터만 있어도
+        출근·주말 시간대의 공칭값에 곱해 쓸 수 있다.
+        """
+        if self._conn is None:
+            return {}
+        try:
+            rows = self._conn.execute(
+                """SELECT station_id, route_name, ts, n_vehicles, eta1_sec,
+                          absent_since, headway_sec, b_status
+                   FROM route_cycles
+                   WHERE ts >= datetime('now', ?)
+                   ORDER BY station_id, route_name, ts""",
+                (f"-{days} days",),
+            ).fetchall()
+        except sqlite3.Error:
+            log.exception("배차 보정 학습 실패")
+            return {}
+
+        groups: dict[tuple[str, str], list] = {}
+        for r in rows:
+            groups.setdefault((r[0], r[1]), []).append(r[2:])
+
+        learned = {}
+        for key, seq in groups.items():
+            ratios = headway_ratios(seq)
+            if len(ratios) >= min_samples:
+                ratios.sort()
+                ratio = ratios[len(ratios) // 2]
+                learned[key] = min(HEADWAY_RATIO_MAX, max(HEADWAY_RATIO_MIN, ratio))
         return learned
 
     def open_absences(self, *, max_age_min: int = 120) -> dict[tuple[str, str], str]:

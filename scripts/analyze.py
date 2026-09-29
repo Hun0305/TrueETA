@@ -22,7 +22,15 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-DB = Path(__file__).resolve().parents[1] / "var" / "observations.db"
+ROOT = Path(__file__).resolve().parents[1]
+DB = ROOT / "var" / "observations.db"
+
+# 배차 보정은 폴러와 **같은 코드**로 계산해야 여기서 본 숫자가 화면과 맞는다
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
+from trueeta.storage import (  # noqa: E402
+    HEADWAY_MIN_SAMPLES, HEADWAY_RATIO_MAX, HEADWAY_RATIO_MIN, headway_ratios,
+)
 
 
 def percentile(values: list[float], pct: float) -> float:
@@ -140,8 +148,15 @@ def compare(db: Path, days: int | None = None, route: str | None = None) -> dict
         res["a"], res["b"] = dict(a_count), dict(b_count)
         res["a_waiting"] = a_count.get("waiting", 0)
 
-        # 1) B안 예측 vs 실제 대기
-        errors, under_min, matched = [], 0, 0
+        # 0) 배차 보정 비율 — 폴러와 같은 함수 (storage.headway_ratios)
+        ratios = headway_ratios([(r[0], r[3], r[4], r[8], r[9], r[11]) for r in seq])
+        ratio = None
+        if len(ratios) >= HEADWAY_MIN_SAMPLES:
+            ratio = min(HEADWAY_RATIO_MAX, max(HEADWAY_RATIO_MIN, _median(ratios)))
+        res["h_ratio"], res["h_samples"] = ratio, len(ratios)
+
+        # 1) B안 예측 vs 실제 대기. 보정 비율을 적용했다면 M 이 어땠을지도 같이
+        errors, adj_errors, under_min, matched = [], [], 0, 0
         for i, r in enumerate(seq):
             if r[11] != "unseen":
                 continue
@@ -157,11 +172,17 @@ def compare(db: Path, days: int | None = None, route: str | None = None) -> dict
                             under_min += 1
                         if r[13] is not None:
                             errors.append(actual - r[13])
+                        if ratio and r[8] and r[9] and r[12] is not None:
+                            elapsed = (t0 - datetime.fromisoformat(r[8])).total_seconds()
+                            m_adj = max(r[12], r[9] * ratio - elapsed)
+                            adj_errors.append(actual - m_adj)
                     break
         res["matched"] = matched
         res["under_min"] = under_min
         res["m_bias"] = _median(errors)
         res["m_abs_err"] = _median([abs(e) for e in errors])
+        res["m_adj_bias"] = _median(adj_errors)
+        res["m_adj_abs_err"] = _median([abs(e) for e in adj_errors])
 
         # 2) '차 없음' 구간 길이 vs 배차간격
         gaps = []
@@ -200,10 +221,18 @@ def compare(db: Path, days: int | None = None, route: str | None = None) -> dict
                       f"절대오차 중앙 {res['m_abs_err'] / 60:.1f}분")
             print(f"    최소 N 보다 빨리 온 경우: {under_min}건"
                   + ("  <- N 이 너무 크다" if under_min > matched * 0.1 else ""))
+            if res["m_adj_abs_err"] is not None:
+                # 같은 데이터로 배우고 같은 데이터로 잰 값이라 실제보다 좋게 나온다
+                print(f"    배차 보정 ×{ratio:.2f} 을 적용했다면: 중앙 {res['m_adj_bias'] / 60:+.1f}분, "
+                      f"절대오차 중앙 {res['m_adj_abs_err'] / 60:.1f}분  (같은 데이터로 학습 — 낙관적)")
         else:
             print("  B안 예측 검증: 아직 대조할 쌍이 없다 (차 없음 뒤 차가 다시 보인 기록 필요)")
         if gaps:
             print(f"  차 없음 구간이 배차간격을 넘긴 경우: {res['gap_over_headway']}/{len(gaps)}")
+        if ratio is not None:
+            print(f"  배차 보정 학습: ×{ratio:.2f} (구간 {len(ratios)}개, 실측 ÷ 노선정보 배차간격)")
+        else:
+            print(f"  배차 보정 학습: 구간 {len(ratios)}개 — {HEADWAY_MIN_SAMPLES}개 이상 필요")
         if res["n_learned"] is not None:
             print(f"  N 재학습: {res['n_learned']}초 (표본 {len(firsts)}) — 현재 사용 중 {res['n_current']}초")
         else:
